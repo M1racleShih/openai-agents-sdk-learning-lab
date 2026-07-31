@@ -1,12 +1,14 @@
-# Learning Log
+# 学习记录
 
-本日志只保留学习门的状态和验证证据，不记录逐分钟过程。
+[English](LEARNING_LOG-en.md)
 
-## Module Status
+本日志只保留每个模块的状态和验证证据，不记录逐分钟过程。
+
+## 模块状态
 
 | 模块 | 状态 | 完成时间 | 验证证据 |
 | --- | --- | --- | --- |
-| M00：首个可追踪 Agent | ready | — | — |
+| M00：首个可追踪 Agent | in_progress | — | — |
 | M01：结构化结果与上下文 | pending | — | — |
 | M02：只读函数工具 | pending | — | — |
 | M03：有界运行与失败语义 | pending | — | — |
@@ -16,17 +18,17 @@
 
 状态只使用 `pending`、`ready`、`in_progress` 和 `passed`。
 
-## Module Entry Template
+## 模块记录模板
 
 每个模块通过后追加一节：
 
 ```text
 ## Mxx
 
-- Completed:
-- Evidence:
-- One misconception corrected:
-- One open question:
+- 完成时间：
+- 验证证据：
+- 纠正的一个误解：
+- 一个未决问题：
 ```
 
 不要在这里粘贴 API key、完整 prompt、原始模型响应或私有数据。

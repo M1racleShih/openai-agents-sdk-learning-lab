@@ -1,5 +1,7 @@
 # OpenAI Agents SDK 最短实战学习路线
 
+[English](LEARNING_PLAN-en.md)
+
 ## 目标与适用对象
 
 本路线面向熟练使用 Python、理解常见 Agent 概念、但没有 AI 应用开发经验的
@@ -55,27 +57,34 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 
 整条路线只维护一个逐步演进的项目，不为每个概念复制一个 demo。
 
-每个模块都采用同一节奏：
+教材编写和学习分成两部分。
 
-1. 10–20 分钟只读当轮需要的官方资料；
-2. 运行一个最小示例并观察实际对象或 trace；
-3. 学习者亲手完成关键 SDK 接线；
-4. 运行自动检查和一个故障场景；
-5. 不看笔记解释本轮的边界和失败语义；
-6. 通过验收门后做一个里程碑提交。
+编写教材时：
 
-辅导时，导师提供目标、骨架、测试和逐级提示；学习者完成核心 SDK 代码。卡住
-超过 10 分钟就缩小问题或给提示，避免把时间耗在无关细节上。导师不会预先写完
-整套答案，否则只能验证代码能运行，不能验证学习者已经会开发。
+1. 先阅读项目锁定版本对应的官方文档、源码和 examples；
+2. 只选择完成本章目标必须掌握的知识；
+3. 优先改写版本匹配的官方示例，并说明来源和改动；
+4. 用安装的 SDK 和自动检查核对教材中的接口；
+5. 在文末记录版本、核对日期和参考资料。
 
-## 模块与验收门
+学习时：
+
+1. 教材已经包含本章必需内容；先阅读核心内容和示例；
+2. 完成概念题、代码阅读题或判断题，再展开参考答案；
+3. 只有需要实际验证时才编码；多个连续章节可以共用一次实战；
+4. 运行检查，确认结果符合本模块的完成标准。
+
+教材按“核心内容 → 习题 → 参考”组织。实战题放在确实需要编码的章节中，或者放在
+几个相关章节之后。官方文档用于追溯来源和升级时核对，不作为默认必读作业。
+
+## 模块与完成标准
 
 ### M00：跑通一次可观察的 Agent 运行（45 分钟）
 
 学习：
 
 - Agents SDK 与直接使用 Responses API 的职责差异；
-- `Agent`、`Runner.run`、一次 turn 和停止条件；
+- `Agent`、`Runner.run`、一次运行和停止条件；
 - 默认 trace 中能看到什么。
 
 动手：
@@ -84,7 +93,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 打印 `final_output`；
 - 在 Trace viewer 中找到该次运行。
 
-验收：
+完成标准：
 
 - 能画出“模型 → 工具 → 模型 → 最终输出”的循环；
 - 能说明为什么上层应用仍然拥有工具、权限和持久状态；
@@ -106,7 +115,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 让单 Agent 返回类型化结果；
 - 把 logger、允许的资料根目录等依赖放入本地 context。
 
-验收：
+完成标准：
 
 - 正常运行返回可直接序列化的 `WorkerResult`；
 - 能指出哪些信息模型可见、哪些只在本地代码中；
@@ -129,7 +138,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 为异步工具设置单次超时；
 - 直接测试工具的成功、越界路径和底层失败。
 
-验收：
+完成标准：
 
 - 工具集合中不存在写操作；
 - 路径不能逃出允许根目录；
@@ -153,7 +162,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 保证异常路径仍能向调用者返回机器可读错误；
 - 覆盖资料缺失、工具失败、超时和结果不完整。
 
-验收：
+完成标准：
 
 - 四种非正常场景都有稳定、可断言的结果；
 - `completed` 不能同时包含阻止任务完成的错误；
@@ -177,7 +186,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 通过依赖注入替换 runner 边界，写无真实模型调用的确定性测试；
 - 保留一项显式标记的真实模型 smoke test。
 
-验收：
+完成标准：
 
 - 能从 trace 解释一次运行调用了哪些工具以及在哪里失败；
 - 仓库、测试输出和本地记录都不含密钥或原始私有数据；
@@ -198,7 +207,7 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 - 自动检查覆盖正常、缺少资料、工具失败、超时和不完整结果；
 - 完成一次真实模型端到端运行。
 
-验收：
+完成标准：
 
 - 一个全新的调用方只依赖 JSON schema 就能正确调用；
 - 运行过程可复查，但不会无限保存工具原始输出；
@@ -246,10 +255,18 @@ SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、�
 
 ```text
 README.md
+README-en.md
 LEARNING_PLAN.md
+LEARNING_PLAN-en.md
 LEARNING_LOG.md
+LEARNING_LOG-en.md
 pyproject.toml
 uv.lock
+mkdocs.yml
+docs/
+  index.md
+  index.en.md
+  lessons/
 src/evidence_worker/
 tests/
 fixtures/
@@ -270,28 +287,39 @@ fixtures/
 2026-07-30 启动时确认的 SDK 版本是 0.19.1。版本会继续变化，`uv.lock` 才是
 这次学习过程的可复现依据。
 
-## 必读资料
+## 资料来源
 
-只读与当前模块直接相关的官方页面：
+本课程以项目锁定版本的 Python SDK 资料为主：
 
-- [Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
-- [Quickstart](https://developers.openai.com/api/docs/guides/agents/quickstart)
-- [Agent definitions](https://developers.openai.com/api/docs/guides/agents/define-agents)
-- [Running agents](https://openai.github.io/openai-agents-python/running_agents/)
-- [Results](https://openai.github.io/openai-agents-python/results/)
-- [Context management](https://openai.github.io/openai-agents-python/context/)
-- [Tools](https://openai.github.io/openai-agents-python/tools/)
-- [Tracing](https://openai.github.io/openai-agents-python/tracing/)
+- [Python SDK v0.19.1](https://github.com/openai/openai-agents-python/tree/v0.19.1)
+- [Quickstart](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/quickstart.md)
+- [Agent definitions](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/agents.md)
+- [Running agents](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
+- [Results](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md)
+- [Context management](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/context.md)
+- [Tools](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tools.md)
+- [Tracing](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
+- [Versioned examples](https://github.com/openai/openai-agents-python/tree/v0.19.1/examples)
 
-不要求先看 cookbook，也不要求通读 API reference。遇到具体接口问题时再进入
-相应 reference 页面。
+[OpenAI Agents SDK 开发者指南](https://developers.openai.com/api/docs/guides/agents)
+用于补充整体定位、Agents SDK 与 Responses API 的区别，以及当前官方方向。两处资料
+不一致时，课程中的接口和行为以 `v0.19.1` 源码、文档和本地实际结果为准。
+
+学习者不需要通读这些资料。每章教材会选择必需内容，并在文末列出具体来源。
+
+教材组织参考 Hello-Agents 的
+[概念章节](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter3/%E7%AC%AC%E4%B8%89%E7%AB%A0%20%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80.md)
+和 [实践章节](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter4/%E7%AC%AC%E5%9B%9B%E7%AB%A0%20%E6%99%BA%E8%83%BD%E4%BD%93%E7%BB%8F%E5%85%B8%E8%8C%83%E5%BC%8F%E6%9E%84%E5%BB%BA.md)。
+这里只借鉴“先解释概念，再给例子和习题，最后列出参考”的写法，不把其中的技术内容
+作为本课程依据。
 
 ## 开始方式
 
-学习者发送“开始 M00”。导师随后：
+从 [M00 中文教材](docs/lessons/m00-first-agent.md) 或
+[M00 English lesson](docs/lessons/m00-first-agent.en.md)开始：
 
-1. 初始化私有学习仓库和可复现环境；
-2. 给出 M00 的 10 分钟心智模型；
-3. 提供最小骨架与验收测试；
-4. 由学习者完成关键代码；
-5. 共同检查 trace、回答验收问题并准备里程碑提交。
+1. 阅读核心内容和示例；
+2. 先完成概念题和代码阅读题，再查看参考答案；
+3. 按实战题要求编写第一个 Agent；
+4. 运行仓库检查和一次真实模型调用；
+5. 在 Trace viewer 中找到这次运行，然后把验证证据写入学习记录。
