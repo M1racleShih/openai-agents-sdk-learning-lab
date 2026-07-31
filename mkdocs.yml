@@ -1,0 +1,99 @@
+site_name: Agents SDK Learning Lab
+site_description: Build a bounded, read-only evidence worker with the OpenAI Agents SDK.
+site_url: https://m1racleshih.github.io/openai-agents-sdk-learning-lab/
+repo_url: https://github.com/M1racleShih/openai-agents-sdk-learning-lab
+repo_name: M1racleShih/openai-agents-sdk-learning-lab
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - 课程首页: index.md
+  - 教材站使用说明: site-guide.md
+  - M00 · 第一次运行 Agent: lessons/m00-first-agent.md
+
+theme:
+  name: material
+  language: zh
+  font: false
+  icon:
+    logo: material/compass-rose
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: 切换主题 / Switch theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: 切换主题 / Switch theme
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: zh
+          default: true
+          name: 中文
+          build: true
+        - locale: en
+          name: English
+          build: true
+          nav_translations:
+            课程首页: Course home
+            教材站使用说明: Lesson site guide
+            M00 · 第一次运行 Agent: M00 · Run your first Agent
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra_javascript:
+  - assets/javascripts/reading-progress.js
+
+extra:
+  generator: false
+
+copyright: OpenAI Agents SDK Learning Lab · SDK v0.19.1
