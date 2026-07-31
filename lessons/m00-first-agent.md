@@ -84,7 +84,8 @@ SDK 管理这个循环，但不会替应用决定：
 在 `src/evidence_worker/first_agent.py` 中完成第一个程序：
 
 1. 定义一个只负责解释 Python 概念的 Agent；
-2. 使用环境变量 `OPENAI_LEARNING_MODEL` 提供显式模型名称；
+2. 调用 `load_learning_model()`，由环境变量 `OPENAI_LEARNING_MODEL` 提供显式
+   模型名称；
 3. 如果该变量缺失，程序应立即给出清晰错误，不静默使用 SDK 默认模型；
 4. 用 `Runner.run` 询问：“Python 的 context manager 解决了什么问题？”；
 5. 输出 `result.final_output`；
@@ -102,11 +103,31 @@ uv run pyright
 uv run pytest
 ```
 
-真实运行前，在当前终端提供：
+使用 OpenAI 真实运行前，在当前终端提供：
 
 ```bash
+export LEARNING_MODEL_PROVIDER=openai
 export OPENAI_API_KEY=...
 export OPENAI_LEARNING_MODEL=...
+```
+
+使用第三方 OpenAI-compatible 端点时提供：
+
+```bash
+export LEARNING_MODEL_PROVIDER=openai-compatible
+export OPENAI_LEARNING_MODEL=供应商模型ID
+export OPENAI_COMPATIBLE_BASE_URL=https://供应商端点
+export OPENAI_COMPATIBLE_API_KEY=...
+# 默认 chat_completions；供应商明确支持时也可设为 responses
+export OPENAI_COMPATIBLE_API=chat_completions
+```
+
+MiniMax、DeepSeek 和 GLM 的配置示例见
+[README：选择模型供应商](../README.md#选择模型供应商)。如果没有单独用于 OpenAI
+tracing 的 `OPENAI_API_KEY`，还应设置：
+
+```bash
+export OPENAI_AGENTS_DISABLE_TRACING=1
 ```
 
 然后运行：
@@ -115,8 +136,9 @@ export OPENAI_LEARNING_MODEL=...
 uv run python -m evidence_worker.first_agent
 ```
 
-运行结束后，在 OpenAI Trace viewer 中找到对应 trace，并确认至少能看到模型调用
-和最终输出。
+启用 OpenAI tracing 时，运行结束后在 OpenAI Trace viewer 中找到对应 trace，
+并确认至少能看到模型调用和最终输出。关闭 tracing 的第三方模型练习可以验证模型
+调用，但不能单独满足本节的 trace 验收门。
 
 ## 验收问题
 
