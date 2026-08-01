@@ -16,6 +16,7 @@ nav:
   - M01 · 结构化结果与上下文: lessons/m01-structured-results-and-context.md
   - M02 · 有边界的只读工具: lessons/m02-read-only-tools.md
   - M03 · 有界运行与真实失败: lessons/m03-bounded-runs-and-failures.md
+  - M04 · 脱敏追踪与确定性测试: lessons/m04-tracing-and-testing.md
 
 theme:
   name: material
@@ -67,6 +68,7 @@ plugins:
             M01 · 结构化结果与上下文: M01 · Structured results and context
             M02 · 有边界的只读工具: M02 · Bounded read-only tools
             M03 · 有界运行与真实失败: M03 · Bounded runs and truthful failures
+            M04 · 脱敏追踪与确定性测试: M04 · Redacted tracing and deterministic tests
 
 markdown_extensions:
   - abbr
