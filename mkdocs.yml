@@ -18,6 +18,7 @@ nav:
   - M03 · 有界运行与真实失败: lessons/m03-bounded-runs-and-failures.md
   - M04 · 脱敏追踪与确定性测试: lessons/m04-tracing-and-testing.md
   - M05 · JSON 证据工作器: lessons/m05-json-evidence-worker.md
+  - M06 · 目标项目就绪评审: lessons/m06-readiness-review.md
 
 theme:
   name: material
@@ -71,6 +72,7 @@ plugins:
             M03 · 有界运行与真实失败: M03 · Bounded runs and truthful failures
             M04 · 脱敏追踪与确定性测试: M04 · Redacted tracing and deterministic tests
             M05 · JSON 证据工作器: M05 · JSON evidence worker
+            M06 · 目标项目就绪评审: M06 · Target-project readiness review
 
 markdown_extensions:
   - abbr
