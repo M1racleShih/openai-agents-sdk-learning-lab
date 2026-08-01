@@ -13,6 +13,7 @@ nav:
   - 课程首页: index.md
   - 教材站使用说明: site-guide.md
   - M00 · 第一次运行 Agent: lessons/m00-first-agent.md
+  - M01 · 结构化结果与上下文: lessons/m01-structured-results-and-context.md
 
 theme:
   name: material
@@ -61,6 +62,7 @@ plugins:
             课程首页: Course home
             教材站使用说明: Lesson site guide
             M00 · 第一次运行 Agent: M00 · Run your first Agent
+            M01 · 结构化结果与上下文: M01 · Structured results and context
 
 markdown_extensions:
   - abbr

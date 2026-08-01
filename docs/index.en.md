@@ -113,6 +113,5 @@ troubleshooting workflow.
 
 !!! info "Current scope"
 
-    The site starts with the home page and M00 so that the reading experience can be evaluated.
-    The learning route, progress log, and later modules remain in the repository. They can be
-    connected gradually after this format is accepted, without changing the route or core goals.
+    The site currently includes the home page, M00, and M01. The learning route, progress log, and
+    later modules remain in the repository. Later lessons will be added in the planned order.
