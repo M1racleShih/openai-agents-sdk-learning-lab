@@ -15,6 +15,7 @@ nav:
   - M00 · 第一次运行 Agent: lessons/m00-first-agent.md
   - M01 · 结构化结果与上下文: lessons/m01-structured-results-and-context.md
   - M02 · 有边界的只读工具: lessons/m02-read-only-tools.md
+  - M03 · 有界运行与真实失败: lessons/m03-bounded-runs-and-failures.md
 
 theme:
   name: material
@@ -65,6 +66,7 @@ plugins:
             M00 · 第一次运行 Agent: M00 · Run your first Agent
             M01 · 结构化结果与上下文: M01 · Structured results and context
             M02 · 有边界的只读工具: M02 · Bounded read-only tools
+            M03 · 有界运行与真实失败: M03 · Bounded runs and truthful failures
 
 markdown_extensions:
   - abbr
