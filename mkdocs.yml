@@ -17,6 +17,7 @@ nav:
   - M02 · 有边界的只读工具: lessons/m02-read-only-tools.md
   - M03 · 有界运行与真实失败: lessons/m03-bounded-runs-and-failures.md
   - M04 · 脱敏追踪与确定性测试: lessons/m04-tracing-and-testing.md
+  - M05 · JSON 证据工作器: lessons/m05-json-evidence-worker.md
 
 theme:
   name: material
@@ -69,6 +70,7 @@ plugins:
             M02 · 有边界的只读工具: M02 · Bounded read-only tools
             M03 · 有界运行与真实失败: M03 · Bounded runs and truthful failures
             M04 · 脱敏追踪与确定性测试: M04 · Redacted tracing and deterministic tests
+            M05 · JSON 证据工作器: M05 · JSON evidence worker
 
 markdown_extensions:
   - abbr
