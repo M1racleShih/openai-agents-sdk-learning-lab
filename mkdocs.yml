@@ -14,6 +14,7 @@ nav:
   - 教材站使用说明: site-guide.md
   - M00 · 第一次运行 Agent: lessons/m00-first-agent.md
   - M01 · 结构化结果与上下文: lessons/m01-structured-results-and-context.md
+  - M02 · 有边界的只读工具: lessons/m02-read-only-tools.md
 
 theme:
   name: material
@@ -63,6 +64,7 @@ plugins:
             教材站使用说明: Lesson site guide
             M00 · 第一次运行 Agent: M00 · Run your first Agent
             M01 · 结构化结果与上下文: M01 · Structured results and context
+            M02 · 有边界的只读工具: M02 · Bounded read-only tools
 
 markdown_extensions:
   - abbr

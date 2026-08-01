@@ -113,5 +113,5 @@ troubleshooting workflow.
 
 !!! info "Current scope"
 
-    The site currently includes the home page, M00, and M01. The learning route, progress log, and
-    later modules remain in the repository. Later lessons will be added in the planned order.
+    The site currently includes the home page, M00, M01, and M02. The learning route, progress log,
+    and later modules remain in the repository. Later lessons will be added in the planned order.
