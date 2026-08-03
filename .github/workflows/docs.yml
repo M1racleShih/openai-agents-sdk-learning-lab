@@ -1,0 +1,66 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # GitHub Actions 不支持 YAML 锚点，两处 paths 只能重复书写。
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pages 只允许一个部署在途。不取消进行中的部署，避免半成品站点上线。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+
+      # --locked 而非 --frozen：pyproject 与 uv.lock 漂移时直接失败，
+      # 不静默按旧锁构建。Python 版本由 .python-version 决定，uv 自动获取。
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # mkdocs.yml 里 strict: true，坏链和无效引用会让这一步失败。
+      - name: Build site
+        run: uv run mkdocs build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    # PR 只验证构建，不部署。
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
