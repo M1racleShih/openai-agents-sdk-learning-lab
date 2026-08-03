@@ -156,3 +156,13 @@ Never put a secret in the repository, a test fixture, the learning log, or shell
 M00 is in progress: read the [English lesson](docs/lessons/m00-first-agent.en.md) or
 [Chinese lesson](docs/lessons/m00-first-agent.md), complete the exercises, and run the first traceable
 Agent.
+
+## License and attribution
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
+
+Lesson examples are adapted from the official examples and documentation of
+[openai/openai-agents-python](https://github.com/openai/openai-agents-python) (MIT licensed), trimmed
+or rewritten for each module's goal. Every lesson lists the corresponding official documentation
+links at the end, so sources stay traceable when the SDK is upgraded. This project is not affiliated
+with OpenAI.

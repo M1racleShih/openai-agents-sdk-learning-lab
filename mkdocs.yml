@@ -108,4 +108,4 @@ extra_javascript:
 extra:
   generator: false
 
-copyright: OpenAI Agents SDK Learning Lab · SDK v0.19.1
+copyright: OpenAI Agents SDK Learning Lab · SDK v0.19.1 · MIT License

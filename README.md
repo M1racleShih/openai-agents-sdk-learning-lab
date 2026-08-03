@@ -152,3 +152,11 @@ export OPENAI_AGENTS_DISABLE_TRACING=1
 M00 正在学习：阅读 [中文教材](docs/lessons/m00-first-agent.md) 或
 [English lesson](docs/lessons/m00-first-agent.en.md)，完成习题和第一次可追踪的 Agent
 运行。
+
+## 许可与来源
+
+本项目以 MIT 许可发布，详见 [LICENSE](LICENSE)。
+
+教材中的示例改编自 [openai/openai-agents-python](https://github.com/openai/openai-agents-python)
+的官方 examples 和文档（MIT 许可），并按各章目标做了删减或改写。每章文末列出
+对应的官方文档链接，供追溯来源和升级 SDK 时核对。本项目与 OpenAI 无隶属关系。

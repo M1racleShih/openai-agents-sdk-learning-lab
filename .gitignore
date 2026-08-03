@@ -13,3 +13,6 @@ site/
 *.egg-info/
 .idea/
 .vscode/
+.agents/
+.codex/
+.code-review-graph/
