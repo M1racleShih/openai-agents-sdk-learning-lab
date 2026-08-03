@@ -1,6 +1,6 @@
 ---
 title: M03 · Bounded runs and truthful failures
-description: Use status contracts, turn limits, and run timeouts to keep incomplete, timed-out, and failed work machine-readable.
+description: Use status consistency rules, turn limits, and run timeouts to keep incomplete, timed-out, and failed work machine-readable.
 ---
 
 <p class="lesson-kicker">M03 · 90 minutes · concepts + lab</p>
@@ -77,7 +77,7 @@ run B: one requested source is missing → return existing evidence and list the
 ```
 
 Both SDK calls succeeded, but only run A completed the domain task. Structured output proves that
-fields and types match the contract. The application must still compare
+fields and types pass schema validation. The application must still compare
 `TaskRequest.requested_source_ids` with the actual evidence sources and check for errors that block
 completion.
 
@@ -285,7 +285,7 @@ Each abnormal-path test should assert the `WorkerResult` before matching any log
 missing source → status == "incomplete" and errors contains SOURCE_MISSING
 tool failure   → status == "failed" and errors contains TOOL_FAILURE
 tool or run timeout → status == "failed" with separate stable codes
-incomplete result → status == "incomplete" and retained answer/evidence still matches the contract
+incomplete result → status == "incomplete" and retained answer/evidence still satisfies the result model's consistency rules
 ```
 
 Also verify that Pydantic rejects these three objects: `completed` with an error, `failed` with an
@@ -343,7 +343,7 @@ Answer the questions before expanding the reference answers.
 
 ### Lab: establish bounded runs and failure semantics
 
-Build on the M01 contracts and the two M02 read-only tools. You may modify
+Build on the M01 data models and the two M02 read-only tools. You may modify
 `src/evidence_worker/contracts.py` and add run-wrapper and test files. Do not rename the teaching
 model above and treat it as the complete answer.
 
@@ -405,6 +405,6 @@ Last checked: 2026-08-02. Locked project version: `openai-agents==0.19.1`.
 - [Python 3.12 `asyncio.timeout`](https://docs.python.org/3.12/library/asyncio-task.html#asyncio.timeout)
 
 Changes to the examples: retain one asynchronous `Runner.run` from the official basic-run
-documentation and lifecycle example; add the course's three-status contract, 6-turn limit,
+documentation and lifecycle example; add the course's three-status rules, 6-turn limit,
 20-second run-level timeout, stable error codes, and controlled error handlers; remove random
 tools, handoffs, hooks, interactive input, sessions, streaming, retries, and the complete lab answer.

@@ -1,6 +1,6 @@
 ---
 title: M05 · JSON 证据工作器
-description: 把前四章的结果契约、只读工具、失败语义和脱敏观测接成一个稳定的 JSON-in/JSON-out 进程入口。
+description: 把前四章的结果模型、只读工具、失败语义和脱敏观测接成一个稳定的 JSON-in/JSON-out 进程入口。
 ---
 
 <p class="lesson-kicker">M05 · 120 分钟 · 核心实战</p>
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 | `failed` | `1` | JSON 可解析，但没有可安全使用的领域答案 |
 
 调用方仍应读取 `status` 和稳定的 `WorkerError.code`。退出码只让 shell 或进程管理器快速知道
-任务是否完整完成，不能代替结果契约。
+任务是否完整完成，不能代替对结果模型的检查。
 
 所有正常和已映射的异常路径都必须只调用一次 `write_result`。工具、hooks 和应用代码都不能
 向标准输出 `print(...)`。日志只包含固定事件名、`trace_id`、状态和错误代码；不要记录原始

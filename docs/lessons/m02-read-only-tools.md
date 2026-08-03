@@ -331,7 +331,7 @@ async def test_catalog_failure_is_not_normal_data() -> None:
 
 ### 实战：实现两个有边界的只读工具
 
-在上一章的契约和本地 context 基础上完成以下任务。你可以新建
+在上一章的数据模型和本地 context 基础上完成以下任务。你可以新建
 `src/evidence_worker/tools.py` 和 `tests/test_tools.py`，但不要复制本章片段作为完整答案。
 
 1. 在 `fixtures/` 下准备公开练习文本；工具只能读取这个目录中的 UTF-8 `.txt` 文件；

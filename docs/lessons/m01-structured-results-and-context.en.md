@@ -37,10 +37,11 @@ After this chapter, you should be able to:
 
 ## Core material
 
-### 1. Request and result contracts solve different problems
+### 1. Request and result models solve different problems
 
-A contract here is a set of fields and types that ordinary code can check. The application first
-uses `TaskRequest` to validate caller data. It then gives `Runner.run` only the content the model is
+This course calls `TaskRequest` the request model and `WorkerResult` the result model. Both are
+Pydantic data models that ordinary code can validate by field and type. The application first uses
+`TaskRequest` to validate caller data. It then gives `Runner.run` only the content the model is
 allowed to see. After the Agent finishes, the SDK checks the model output against `WorkerResult`
 and places the validated object in `final_output`.
 
@@ -53,12 +54,16 @@ caller JSON
   → caller reads fields
 ```
 
-The contracts do not replace each other:
+The two models do not replace each other:
 
 | Object | Who creates or checks it | Purpose |
 | --- | --- | --- |
 | `TaskRequest` | The application checks it before running the Agent | Reject tasks with missing fields or wrong types |
 | `WorkerResult` | The Agent follows its schema and the SDK parses and validates it | Let downstream code read the answer, evidence, and errors consistently |
+
+Keep the terms distinct: `TaskRequest` and `WorkerResult` are data models. Passing `WorkerResult`
+to `output_type` makes the SDK generate an output schema and require structured output. M03 then
+adds status consistency rules for the relationships among status, answer, evidence, and errors.
 
 `Runner.run` accepts a string or model input items. Defining `TaskRequest` does not automatically
 turn that object into model input. The application must choose fields and build the input. That
@@ -263,9 +268,10 @@ Answer the questions before expanding the reference answers.
 
 </details>
 
-### Lab: establish the worker's first contracts
+### Lab: establish the worker's first data models
 
-Define these Pydantic models in `src/evidence_worker/contracts.py`:
+Define these Pydantic models in the model-definition module at
+`src/evidence_worker/contracts.py`:
 
 1. `TaskRequest` with `task_id: str`, `question: str`, and
    `requested_source_ids: list[str]`;
@@ -319,7 +325,7 @@ Completion criteria:
 
 This chapter does not provide the complete lab implementation. The `SummaryResult` example above
 shows how `output_type`, context, and serialization connect. Apply the same relationships to your
-four contracts.
+four data models.
 
 ## References
 

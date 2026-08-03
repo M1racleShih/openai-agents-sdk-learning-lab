@@ -116,7 +116,7 @@ next action; it should not infer task status by parsing logs.
 ### 4. The live change must cross real boundaries and remain small
 
 Prefer an output field derived from existing read-only data, such as an evidence category. This is
-a better live review than adding a service client: it still checks the contract, data movement,
+a better live review than adding a service client: it still checks the data model, data movement,
 serialization, and tests without expanding permissions or adding network failures.
 
 Make the change in this order:
@@ -139,7 +139,7 @@ write operation during the 45-minute review.
 !!! tip "How to tell whether the change is small enough"
 
     You should be able to finish the change in about 15 minutes and use the remaining time to run
-    tests and explain its effects. If it requires rewriting the result contract or process entry
+    tests and explain its effects. If it requires rewriting the result model or process entry
     point, the change is too large or M05's boundaries are not yet stable.
 
 ### 5. State what changes and what remains when joining the target project
@@ -264,7 +264,7 @@ Answer the questions before expanding the reference answers.
    permissions or a new service.
 6. A value determined by ordinary code is more stable and easier to test, and it does not spend a
    model call guessing an existing fact.
-7. Yes. The target project may use a queue or an in-process call, but input and output contracts,
+7. Yes. The target project may use a queue or an in-process call, but input and output models,
    validation, timeout, status, and testable behavior must remain explicit.
 8. Default tests prove that listed scenarios repeat under controlled input without reaching the
    network. A real smoke run proves that the current model, configuration, tools, and entry point
@@ -303,7 +303,7 @@ Completion criteria:
 
 - the 15-minute explanation does not depend on the lesson and identifies data, control ownership,
   stopping points, and failure ownership layer by layer;
-- one small change crosses the contract, implementation, schema, and deterministic tests without
+- one small change crosses the data model, implementation, schema, and deterministic tests without
   broadening read permissions;
 - the target-project boundary list states who replaces every item and which constraints remain;
 - all three default checks pass without making a real model call;

@@ -349,7 +349,7 @@ Answer the questions before expanding the reference answers.
 
 ### Lab: implement two bounded read-only tools
 
-Build on the previous chapter's contracts and local context. You may add
+Build on the previous chapter's data models and local context. You may add
 `src/evidence_worker/tools.py` and `tests/test_tools.py`, but do not copy the lesson fragments as a
 complete answer.
 

@@ -71,8 +71,8 @@ coverage checks, and tests still make that decision.
 | Deterministic test | Whether a fixed input produces the required result | Whether the real provider currently responds |
 
 Troubleshooting therefore joins two kinds of evidence. Use the local record to find the `trace_id`,
-inspect the path in the trace, and then use the result contract to decide whether the caller may use
-the returned content.
+inspect the path in the trace, and then use the result status and consistency rules to decide whether
+the caller may use the returned content.
 
 ### 2. Three identifiers answer three different questions
 

@@ -1,6 +1,6 @@
 ---
 title: M05 · JSON evidence worker
-description: Connect the result contract, read-only tools, failure semantics, and redacted observation from the first four chapters behind a stable JSON-in/JSON-out process entry point.
+description: Connect the result model, read-only tools, failure semantics, and redacted observation from the first four chapters behind a stable JSON-in/JSON-out process entry point.
 ---
 
 <p class="lesson-kicker">M05 · 120 minutes · capstone lab</p>
@@ -179,8 +179,8 @@ The exit codes are this course's process protocol, not SDK status values:
 | `failed` | `1` | The JSON is valid, but there is no safe domain answer to use |
 
 The caller must still read `status` and the stable `WorkerError.code`. An exit code gives a shell or
-process manager a quick signal that the task did not complete; it does not replace the result
-contract.
+process manager a quick signal that the task did not complete; it does not replace checking the
+result model.
 
 Every normal and mapped abnormal path must call `write_result` exactly once. Tools, hooks, and
 application code must not `print(...)` to standard output. Logs contain only fixed event names,

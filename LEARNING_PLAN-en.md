@@ -36,7 +36,7 @@ upstream runtime
 ```
 
 The SDK runs the model/tool loop. Application code still owns tool implementations, permission
-boundaries, timeouts, the result contract, records, and the external entry point.
+boundaries, timeouts, result validation, records, and the external entry point.
 
 ## Learning scope
 
@@ -105,7 +105,7 @@ Complete when:
 
 Submit: `feat(m00): 跑通首个可追踪的 Agent`
 
-### M01: Establish typed task and result contracts (60 minutes)
+### M01: Establish typed task and result models (60 minutes)
 
 Learn:
 

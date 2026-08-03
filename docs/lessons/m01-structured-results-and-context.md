@@ -35,10 +35,11 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 
 ## 核心内容
 
-### 1. 请求契约和结果契约解决两个不同问题
+### 1. 请求模型和结果模型解决两个不同问题
 
-契约在这里就是一组可以由普通程序检查的字段和类型。应用先用 `TaskRequest` 检查调用方
-传入的数据，再把允许模型看到的内容交给 `Runner.run`。Agent 完成运行后，SDK 按
+本教材把 `TaskRequest` 和 `WorkerResult` 分别称为请求模型和结果模型。它们都是由普通
+程序按照字段和类型检查的 Pydantic 数据模型。应用先用 `TaskRequest` 检查调用方传入的
+数据，再把允许模型看到的内容交给 `Runner.run`。Agent 完成运行后，SDK 按
 `WorkerResult` 检查模型输出，并把经过校验的对象放入 `final_output`。
 
 ```text
@@ -50,12 +51,16 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
   → 调用方读取字段
 ```
 
-两份契约不能互相替代：
+两个模型不能互相替代：
 
 | 对象 | 谁创建或检查 | 用途 |
 | --- | --- | --- |
 | `TaskRequest` | 应用在调用 Agent 前检查 | 拒绝缺字段或类型错误的任务请求 |
 | `WorkerResult` | Agent 按 schema 生成，SDK 解析并检查 | 让下游程序稳定读取答案、证据和错误 |
+
+这里要区分几个术语：`TaskRequest` 和 `WorkerResult` 是数据模型；把 `WorkerResult` 传给
+`output_type` 后，SDK 据此生成输出 schema，并要求 Agent 返回结构化输出；M03 再用状态
+一致性规则约束状态、答案、证据和错误之间的关系。
 
 `Runner.run` 的 `input` 接收字符串或模型输入项，不会因为你定义了 `TaskRequest` 就自动
 把这个对象变成模型输入。应用必须明确选择字段并构造输入。这个动作同时确定了模型能
@@ -252,9 +257,9 @@ if __name__ == "__main__":
 
 </details>
 
-### 实战：建立 worker 的第一版契约
+### 实战：建立 worker 的第一组数据模型
 
-在 `src/evidence_worker/contracts.py` 中定义以下 Pydantic 模型：
+在数据模型定义文件 `src/evidence_worker/contracts.py` 中定义以下 Pydantic 模型：
 
 1. `TaskRequest`：包含 `task_id: str`、`question: str` 和
    `requested_source_ids: list[str]`；
@@ -302,7 +307,7 @@ uv run python -m evidence_worker.structured_agent
 - 仓库检查全部通过。
 
 本章没有给出实战题的完整实现。上面的 `SummaryResult` 示例展示了
-`output_type`、context 和序列化的连接方式；请把相同关系用于自己的四份契约。
+`output_type`、context 和序列化的连接方式；请把相同关系用于自己的四个数据模型。
 
 ## 参考
 

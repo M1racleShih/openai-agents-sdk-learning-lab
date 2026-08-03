@@ -1,6 +1,6 @@
 ---
 title: M03 · 有界运行与真实失败
-description: 用状态契约、轮次上限和运行超时，让不完整、超时和失败保持机器可读。
+description: 用状态一致性规则、轮次上限和运行超时，让不完整、超时和失败保持机器可读。
 ---
 
 <p class="lesson-kicker">M03 · 90 分钟 · 概念 + 实战</p>
@@ -72,9 +72,9 @@ items 或日志来猜任务状态；状态应直接写进 `WorkerResult`。
 运行 B：一份请求资料不存在 → 返回已有证据并列出缺失项 → incomplete
 ```
 
-两次 SDK 调用都成功了，但只有运行 A 完成了领域任务。结构化输出只证明字段和类型符合
-契约。应用还要比较 `TaskRequest.requested_source_ids` 与实际证据来源，并检查阻止完成的
-错误。
+两次 SDK 调用都成功了，但只有运行 A 完成了领域任务。结构化输出只证明字段和类型通过
+schema 校验。应用还要比较 `TaskRequest.requested_source_ids` 与实际证据来源，并检查阻止
+完成的错误。
 
 本课程使用以下状态：
 
@@ -271,7 +271,7 @@ async def run_bounded(
 资料缺失   → status == "incomplete"，errors 中有 SOURCE_MISSING
 工具失败   → status == "failed"，errors 中有 TOOL_FAILURE
 工具或运行超时 → status == "failed"，错误代码分别稳定
-结果不完整 → status == "incomplete"，保留的答案和证据仍符合契约
+结果不完整 → status == "incomplete"，保留的答案和证据仍符合结果模型的一致性规则
 ```
 
 另外检查 Pydantic 会拒绝这三种对象：`completed` 加错误、`failed` 加答案、非完成状态没有
@@ -322,7 +322,7 @@ async def run_bounded(
 
 ### 实战：建立有界运行和失败语义
 
-在 M01 契约和 M02 两个只读工具的基础上完成以下任务。可以修改
+在 M01 数据模型和 M02 两个只读工具的基础上完成以下任务。可以修改
 `src/evidence_worker/contracts.py`，并新增运行包装和测试文件；不要把上面的讲解模型直接
 改名当作完整答案。
 
@@ -380,5 +380,5 @@ uv run pytest
 - [Python 3.12 `asyncio.timeout`](https://docs.python.org/3.12/library/asyncio-task.html#asyncio.timeout)
 
 示例改动：从官方基础运行文档和 lifecycle 示例中保留单次异步 `Runner.run`；加入课程自己的
-三状态契约、6 turn 上限、20 秒运行级超时、稳定错误代码和受控 error handlers；移除
+三状态规则、6 turn 上限、20 秒运行级超时、稳定错误代码和受控 error handlers；移除
 随机工具、handoff、hooks、交互输入、session、streaming、retry 和实战完整答案。
