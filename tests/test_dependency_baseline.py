@@ -28,6 +28,7 @@ async def _probe_tool(value: str) -> str:
 
 
 def test_course_dependencies_are_locked_to_the_reviewed_versions() -> None:
+    assert version("mlflow") == "3.13.0"
     assert version("openai-agents") == "0.20.0"
     assert version("prompt-toolkit") == "3.0.53"
     assert version("rich") == "15.0.0"
