@@ -166,10 +166,11 @@ one workflow: trace
 └── model call: span
 ```
 
-In the normal server-side setup, the Agents SDK enables tracing by default and sends records to the
-[OpenAI Traces dashboard](https://platform.openai.com/traces). In `v0.20.0`, the default trace
-records the overall run, Runner invocation, model turn, Agent execution, and model generation. When
-tools or guardrails are used, it records those steps too.
+The Agents SDK enables tracing by default and exports records through replaceable trace
+processors. At application startup, this project replaces the default OpenAI exporter with a
+local MLflow processor, so it never connects to `api.openai.com`. In `v0.20.0`, traces record the
+overall run, Runner invocation, model turn, Agent execution, and model generation. Tools and
+guardrails add their corresponding steps.
 
 M00 does not use those additional capabilities. After a real run, confirm only that:
 
@@ -185,9 +186,9 @@ lesson exactly.
     exercise question. Never put an API key, private source, or sensitive data in a prompt, log, or
     learning record. M04 explains how to disable sensitive-content capture.
 
-A third-party OpenAI-compatible model and OpenAI tracing use different keys. If no `OPENAI_API_KEY`
-is available for tracing, set `OPENAI_AGENTS_DISABLE_TRACING=1`. You can still complete the model
-call exercise, but you have not yet passed the M00 trace check.
+A third-party OpenAI-compatible model and local tracing are independent paths. The model call uses
+the provider credentials, while traces go to `.mlflow/mlflow.db`; no OpenAI key, proxy, or external
+tracing network is required.
 
 ## Example
 
@@ -296,25 +297,26 @@ export OPENAI_LEARNING_MODEL=...
 ```
 
 For a third-party OpenAI-compatible endpoint, set the variables described in
-[Course home: Model configuration](../index.md#model-configuration). If no separate
-`OPENAI_API_KEY` is available for OpenAI tracing, also set:
+[Course home: Model configuration](../index.md#model-configuration). No tracing key or proxy is
+required.
 
-```bash
-export OPENAI_AGENTS_DISABLE_TRACING=1
-```
-
-Run the exercise:
+Run the exercise and start the local Trace viewer:
 
 ```bash
 uv run python -m evidence_worker.first_agent
+uv run mlflow server --host 127.0.0.1 --port 5000 \
+  --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db \
+  --default-artifact-root file://$PWD/.mlflow/artifacts
 ```
+
+Open `http://127.0.0.1:5000` and select the `agents-sdk-learning-lab` experiment.
 
 Completion criteria:
 
 - the program prints an explanation of context managers;
 - all repository checks pass;
 - no secret appears in code or the learning log;
-- when OpenAI tracing is enabled, the Trace viewer shows this run and its model call;
+- the local MLflow Trace viewer shows this run and its model call;
 - without the lesson, you can explain the relationship between `Agent`, `Runner.run`, and
   `final_output`.
 
@@ -323,13 +325,14 @@ shape; your task is to adapt it to the requirements and run it.
 
 ## Version and official references
 
-Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
+Last checked: 2026-08-13. Locked project versions: `openai-agents==0.20.0` and `mlflow==3.13.0`.
 
 - [OpenAI Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
 - [`v0.20.0` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/quickstart.md)
 - [`v0.20.0` Running agents](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/running_agents.md)
 - [`v0.20.0` Tracing](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
 - [`v0.20.0` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py)
+- [MLflow OpenAI Agents SDK tracing](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/openai-agent/)
 
 Changes to the example: use the project's existing explicit model loader, change the Agent name
 and question, and omit tools, sessions, streaming, and other features outside M00.

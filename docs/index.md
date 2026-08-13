@@ -109,10 +109,13 @@ SDK 拥有 Agent loop、工具编排、Session、streaming 和 Trace；应用层
     第三方默认使用 `chat_completions`。只有供应商明确支持 Responses API 时才设置
     `OPENAI_COMPATIBLE_API=responses`。
 
-!!! warning "模型调用与 tracing 是独立链路"
+!!! info "模型调用与 tracing 是独立链路"
 
-    第三方兼容模型可以完成模型调用，但 OpenAI Trace viewer 仍需要单独的
-    `OPENAI_API_KEY`。没有这个 key 时可以关闭 tracing，但不能通过要求 trace 证据的练习。
+    第三方兼容模型只连接其配置的模型端点。课程把 trace 保存在本地 MLflow SQLite
+    数据库中，不需要 `OPENAI_API_KEY`、代理或外部 tracing 服务。
+
+运行练习后，用 `uv run mlflow server --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db`
+启动本地 Trace viewer，再打开 `http://127.0.0.1:5000`。
 
 ## 本地打开教材站
 

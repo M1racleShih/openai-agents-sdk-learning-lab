@@ -117,9 +117,19 @@ export OPENAI_COMPATIBLE_API_KEY=...
 export OPENAI_COMPATIBLE_API=responses
 ```
 
-课程代码统一通过 `load_learning_model()` 取得模型。第三方模型请求与 OpenAI tracing 使用
-不同凭据；没有 `OPENAI_API_KEY` 时可以设置 `OPENAI_AGENTS_DISABLE_TRACING=1`，但这不能
-完成要求查看 Trace viewer 的练习。
+课程代码统一通过 `load_learning_model()` 取得模型，并把 trace 写入仓库内忽略的
+`.mlflow/mlflow.db`。模型调用与 tracing 完全分离：第三方模型只使用自己的端点和凭据，
+tracing 不需要 `OPENAI_API_KEY`、代理或外部网络。
+
+运行一次练习后，可在另一个终端启动本地 Trace viewer：
+
+```bash
+uv run mlflow server --host 127.0.0.1 --port 5000 \
+  --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db \
+  --default-artifact-root file://$PWD/.mlflow/artifacts
+```
+
+然后打开 `http://127.0.0.1:5000`，进入 `agents-sdk-learning-lab` experiment。
 
 OpenAI-compatible 不表示完整支持工具、JSON Schema、Session 或 streaming。M05 要求对
 锁定 SDK 与实际目标模型做一次显式 opt-in 兼容性 spike。不得把密钥写入仓库、fixture、

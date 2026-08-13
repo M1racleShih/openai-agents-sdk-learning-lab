@@ -112,11 +112,15 @@ The course never relies on the SDK default model. It loads an explicit model thr
     Third-party endpoints use `chat_completions` by default. Set
     `OPENAI_COMPATIBLE_API=responses` only when the provider explicitly supports it.
 
-!!! warning "Model calls and tracing are separate paths"
+!!! info "Model calls and tracing are separate paths"
 
-    A third-party compatible model can make the model call, but the OpenAI Trace viewer still
-    needs a separate `OPENAI_API_KEY`. You may disable tracing without it, but then you cannot pass
-    an exercise that requires trace evidence.
+    A third-party compatible model connects only to its configured model endpoint. The course
+    stores traces in a local MLflow SQLite database and needs no `OPENAI_API_KEY`, proxy, or
+    external tracing service.
+
+After an exercise, start the local Trace viewer with
+`uv run mlflow server --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db`, then open
+`http://127.0.0.1:5000`.
 
 ## Open the lesson site locally
 

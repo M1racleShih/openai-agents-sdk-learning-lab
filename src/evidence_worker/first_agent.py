@@ -2,10 +2,13 @@ import asyncio
 
 from agents import Agent, Runner
 
+from evidence_worker.local_tracing import configure_local_tracing
 from evidence_worker.model_provider import load_learning_model
 
 
-async def main():
+async def main() -> None:
+    configure_local_tracing()
+
     explain_python_agent = Agent(
         name="Python explainer",
         instructions="Explain one Python concept in plain language.",

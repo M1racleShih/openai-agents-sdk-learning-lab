@@ -122,10 +122,20 @@ following only when the provider explicitly supports the Responses API:
 export OPENAI_COMPATIBLE_API=responses
 ```
 
-Course code obtains the model through `load_learning_model()`. Third-party model calls and OpenAI
-tracing use separate credentials. Without `OPENAI_API_KEY`, you may set
-`OPENAI_AGENTS_DISABLE_TRACING=1`, but that does not complete an exercise that requires the Trace
-viewer.
+Course code obtains the model through `load_learning_model()` and writes traces to the ignored
+`.mlflow/mlflow.db` inside the repository. Model calls and tracing are fully separate: a
+third-party model uses only its own endpoint and credentials, while tracing needs no
+`OPENAI_API_KEY`, proxy, or external network.
+
+After running an exercise, start the local Trace viewer in another terminal:
+
+```bash
+uv run mlflow server --host 127.0.0.1 --port 5000 \
+  --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db \
+  --default-artifact-root file://$PWD/.mlflow/artifacts
+```
+
+Open `http://127.0.0.1:5000` and select the `agents-sdk-learning-lab` experiment.
 
 Compatibility for tools, JSON Schema, sessions, and streaming varies across OpenAI-compatible
 providers. M05 requires an explicit opt-in compatibility spike with the locked SDK and the actual

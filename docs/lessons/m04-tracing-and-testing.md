@@ -32,9 +32,9 @@ description: 用稳定的 trace 标识、最小本地记录和可替换的 runne
 
 !!! abstract "本章边界"
 
-    本章只为 M03 的单次、只读运行增加观测和测试边界。它不增加自定义 trace processor、
-    完整 eval 平台、SDK Session 实现、streaming 或生产级日志系统，也不保存原始 prompt、
-    工具参数、工具输出或完整答案。
+    本章只为 M03 的单次、只读运行增加观测和测试边界。它复用项目已有的本地 MLflow
+    processor，不再增加另一套 processor 或完整 eval 平台；也不增加 SDK Session 实现、
+    streaming 或生产级日志系统，不保存原始 prompt、工具参数、工具输出或完整答案。
 
 ## 核心内容
 
@@ -314,7 +314,7 @@ test 应明确跳过或失败，不能静默改用 SDK 默认模型。
 
 ### 7. 用 trace 回答具体问题
 
-真实 smoke run 完成后，按以下顺序检查 Trace viewer：
+真实 smoke run 完成后，按以下顺序检查本地 MLflow Trace viewer：
 
 1. 用固定的 `workflow_name` 找到这类应用运行；
 2. 用本地记录中的 `trace_id` 找到这一次运行；
@@ -391,7 +391,7 @@ test 应明确跳过或失败，不能静默改用 SDK 默认模型。
 8. 在 `pyproject.toml` 注册 `smoke` marker，并让默认 `pytest` 排除它；真实 smoke test
    必须显式选择模型，只读取公开合成 fixture；
 9. 先运行确定性测试和完整仓库检查，再显式运行一次真实模型 smoke test；
-10. 在 Trace viewer 中用 `trace_id` 找到该运行，记录工具调用顺序和失败位置，并确认模型
+10. 在本地 MLflow Trace viewer 中用 `trace_id` 找到该运行，记录工具调用顺序和失败位置，并确认模型
     与工具的原始输入输出未被捕获。
 
 先运行本章测试，再运行完整仓库检查：
@@ -416,7 +416,7 @@ uv run pytest -o addopts= -m smoke tests/test_smoke.py -q
 - 本地记录只含允许的标识、来源/指令指纹、工具阶段、完成分类、证据引用和错误代码；
 - 确定性测试不需要 API key，也不会发出真实模型请求；
 - 默认 `pytest` 排除真实 smoke test；
-- 显式运行的 smoke test 使用公开合成资料，并能在 Trace viewer 中找到；
+- 显式运行的 smoke test 使用公开合成资料，并能在本地 MLflow Trace viewer 中找到；
 - 仓库、测试输出和本地记录不含密钥、私有资料或真实服务信息。
 
 本章不提供实战完整实现。核心内容只给出 trace 配置、最小记录和 runner 注入的连接方式；
@@ -424,7 +424,7 @@ uv run pytest -o addopts= -m smoke tests/test_smoke.py -q
 
 ## 版本与官方参考
 
-本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
+本章最后核对日期：2026-08-13。项目锁定版本：`openai-agents==0.20.0`、`mlflow==3.13.0`。
 
 - [当前 Agents SDK 指南：整体定位](https://developers.openai.com/api/docs/guides/agents)
 - [`v0.20.0` Tracing：默认 spans、标识与敏感数据](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
@@ -435,6 +435,7 @@ uv run pytest -o addopts= -m smoke tests/test_smoke.py -q
 - [`v0.20.0` Runner trace 建立源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run.py)
 - [`v0.20.0` SDK tracing 测试](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_tracing.py)
 - [`v0.20.0` SDK runner 替换测试](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_run.py)
+- [MLflow OpenAI Agents SDK tracing](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/openai-agent/)
 - [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)
 
 示例改动：从官方 tracing 文档和测试保留 `RunConfig`、`workflow_name`、`trace_id`、

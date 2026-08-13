@@ -159,10 +159,10 @@ Tracing 的首要用途不是保存另一份对话，而是让开发者看清最
 └── 模型调用：span
 ```
 
-在常规服务端配置中，Agents SDK 默认启用 tracing，并把记录发送到
-[OpenAI Traces dashboard](https://platform.openai.com/traces)。`v0.20.0` 默认会记录
-整次运行、Runner 调用、模型轮次、Agent 执行和模型生成。使用工具、guardrail 或
-guardrail 时，还会记录相应步骤。
+Agents SDK 默认启用 tracing，并通过可替换的 trace processor 导出记录。本项目在应用启动
+时用本地 MLflow processor 替换默认的 OpenAI exporter，因此不会连接
+`api.openai.com`。`v0.20.0` 会记录整次运行、Runner 调用、模型轮次、Agent 执行和模型
+生成；使用工具或 guardrail 时，还会记录相应步骤。
 
 M00 没有这些额外能力。完成真实运行后，只需确认：
 
@@ -177,9 +177,8 @@ Trace viewer 的名称和层级可能变化，所以不要求界面与教材截�
     key、私有资料或敏感数据放入 prompt、日志或学习记录。M04 会学习怎样关闭敏感内容
     采集。
 
-第三方 OpenAI-compatible 模型和 OpenAI tracing 使用不同的密钥。没有用于 tracing
-的 `OPENAI_API_KEY` 时，应设置 `OPENAI_AGENTS_DISABLE_TRACING=1`。这样可以完成模型
-调用练习，但还不能通过 M00 的 trace 检查。
+第三方 OpenAI-compatible 模型和本地 tracing 是两条独立链路。模型调用使用供应商凭据，
+trace 写入 `.mlflow/mlflow.db`，不需要 OpenAI key、代理或外部 tracing 网络。
 
 ## 示例
 
@@ -283,25 +282,25 @@ export OPENAI_LEARNING_MODEL=...
 ```
 
 使用第三方 OpenAI-compatible 端点时，按
-[课程首页：模型配置](../index.md#模型配置)设置变量。没有单独用于 OpenAI
-tracing 的 `OPENAI_API_KEY` 时，再设置：
+[课程首页：模型配置](../index.md#模型配置)设置变量。无需设置 tracing key 或代理。
 
-```bash
-export OPENAI_AGENTS_DISABLE_TRACING=1
-```
-
-运行练习：
+运行练习并启动本地 Trace viewer：
 
 ```bash
 uv run python -m evidence_worker.first_agent
+uv run mlflow server --host 127.0.0.1 --port 5000 \
+  --backend-store-uri sqlite:///$PWD/.mlflow/mlflow.db \
+  --default-artifact-root file://$PWD/.mlflow/artifacts
 ```
+
+浏览器打开 `http://127.0.0.1:5000`，选择 `agents-sdk-learning-lab` experiment。
 
 完成标准：
 
 - 程序输出对 context manager 的解释；
 - 仓库检查全部通过；
 - 代码和学习记录中没有密钥；
-- 启用 OpenAI tracing 时，能在 Trace viewer 中找到这次运行和其中的模型调用；
+- 能在本地 MLflow Trace viewer 中找到这次运行和其中的模型调用；
 - 不看教材也能解释 `Agent`、`Runner.run` 和 `final_output` 的关系。
 
 这里不提供实战题的完整代码。上面的示例已经展示所需结构，剩下的工作是根据任务
@@ -309,13 +308,14 @@ uv run python -m evidence_worker.first_agent
 
 ## 版本与官方参考
 
-本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
+本章最后核对日期：2026-08-13。项目锁定版本：`openai-agents==0.20.0`、`mlflow==3.13.0`。
 
 - [OpenAI Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
 - [`v0.20.0` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/quickstart.md)
 - [`v0.20.0` Running agents](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/running_agents.md)
 - [`v0.20.0` Tracing](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
 - [`v0.20.0` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py)
+- [MLflow OpenAI Agents SDK tracing](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/openai-agent/)
 
 示例改动：增加项目现有的显式模型加载器，调整 Agent 名称和问题，省略工具、Session、
 streaming 以及其他不属于 M00 的功能。

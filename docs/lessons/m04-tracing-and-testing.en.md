@@ -37,9 +37,10 @@ After this chapter, you should be able to:
 !!! abstract "Chapter boundary"
 
     This chapter adds observation and test boundaries to the single-run, read-only path from M03.
-    It does not add custom trace processors, a complete eval platform, an SDK Session
-    implementation, streaming, or a production logging system. It also does not store raw
-    prompts, tool arguments, tool outputs, or complete answers.
+    It reuses the project's local MLflow processor instead of adding another processor or a
+    complete eval platform. It does not add an SDK Session implementation, streaming, or a
+    production logging system, and it does not store raw prompts, tool arguments, tool outputs,
+    or complete answers.
 
 ## Core material
 
@@ -333,7 +334,7 @@ silently fall back to an SDK default model.
 
 ### 7. Use the trace to answer concrete questions
 
-After the real smoke run, inspect the Trace viewer in this order:
+After the real smoke run, inspect the local MLflow Trace viewer in this order:
 
 1. Find this kind of application run by its fixed `workflow_name`.
 2. Find this run with the `trace_id` from the local record.
@@ -426,7 +427,7 @@ not copy a parallel run path or rename the teaching skeleton above and treat it 
    smoke test must select a model explicitly and read only a public synthetic fixture.
 9. Run deterministic tests and all repository checks first, then explicitly run one real-model
    smoke test.
-10. Find that run in the Trace viewer by `trace_id`, record the tool-call order and failure
+10. Find that run in the local MLflow Trace viewer by `trace_id`, record the tool-call order and failure
     location, and confirm that raw model and tool inputs and outputs were not captured.
 
 Run the chapter tests first, then the complete repository checks:
@@ -454,7 +455,7 @@ Completion criteria:
   evidence references, and error codes;
 - deterministic tests need no API key and make no real model request;
 - default `pytest` excludes the real smoke test;
-- the explicitly run smoke test uses public synthetic sources and can be found in the Trace viewer;
+- the explicitly run smoke test uses public synthetic sources and can be found in the local MLflow Trace viewer;
 - the repository, test output, and local record contain no secret, private source, or real service
   information.
 
@@ -464,7 +465,7 @@ M03 status checks, exception mapping, context, and test scenarios.
 
 ## Version and official references
 
-Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
+Last checked: 2026-08-13. Locked project versions: `openai-agents==0.20.0` and `mlflow==3.13.0`.
 
 - [Current Agents SDK guide: overall positioning](https://developers.openai.com/api/docs/guides/agents)
 - [`v0.20.0` Tracing: default spans, identifiers, and sensitive data](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
@@ -475,6 +476,7 @@ Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
 - [`v0.20.0` Runner trace creation source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run.py)
 - [`v0.20.0` SDK tracing tests](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_tracing.py)
 - [`v0.20.0` SDK runner replacement test](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_run.py)
+- [MLflow OpenAI Agents SDK tracing](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/openai-agent/)
 - [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)
 
 Changes to the examples: retain `RunConfig`, `workflow_name`, `trace_id`, `group_id`,
