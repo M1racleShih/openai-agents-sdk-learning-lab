@@ -4,322 +4,269 @@
 
 ## 目标与适用对象
 
-本路线面向熟练使用 Python、理解常见 Agent 概念、但没有 AI 应用开发经验的
-工程师。目标不是系统学完 OpenAI Agents SDK，而是在 8–10 小时的专注练习后，
-能够独立实现并解释一个供上层运行时调用的、有边界的只读证据 worker。
+本路线面向熟练使用 Python、理解常见 Agent 概念、但没有 AI 应用开发经验的工程师。
+目标不是系统学完整个 SDK，而是在约 11–13 小时后能够开始开发下面这种最小应用：
+
+```text
+用户
+  → 薄终端适配器
+  → UI 无关的应用用例
+  → 一个 OpenAI Agents SDK Agent
+  → 已批准的只读资料与只读 CLI/服务工具
+  → 类型化应用事件、结构化 RunOutcome 和流式用户回答
+```
 
 完成后，学习者应能：
 
-- 解释 `Agent`、`Runner`、模型调用和工具调用组成的运行循环；
-- 用 Pydantic 定义输入和机器可读输出；
-- 用本地函数工具读取允许的资料并查询只读服务；
-- 区分模型上下文与仅供本地代码使用的运行上下文；
-- 为工具和整个运行设置边界，诚实处理不完整、超时和失败；
-- 查看脱敏 trace，并保留最少的可复查运行记录；
-- 用确定性测试覆盖核心逻辑，再完成一次真实模型 smoke run；
-- 提供稳定的 JSON-in/JSON-out 入口供另一个运行时调用。
+- 解释一次应用 turn 与一次 SDK run 的关系；
+- 用一个 `Agent` 和 `Runner` 运行唯一的 Agent loop；
+- 显式选择模型，不依赖 SDK 默认值；
+- 用 Pydantic 定义请求、来源 provenance、错误和结构化运行结果；
+- 实现 fixture 资料、模拟服务与受限 CLI 的只读工具；
+- 稳定区分完成、不完整、失败、取消和超时；
+- 使用 Session 延续两轮对话，使用 streaming 产生用户回答和工具进度；
+- 把 SDK 事件翻译为有限、稳定、UI 无关的应用事件；
+- 用 prompt-toolkit 和 Rich 实现交互终端与 plain mode；
+- 用假 runner、fake stream 和 fake event source 写默认不联网的测试；
+- 完成一次显式真实模型和真实终端 smoke run。
 
-这表示已经具备开发目标 worker 的能力，不表示已经掌握多 Agent、长期记忆、
-人工审批或生产级自主 Agent。
+这表示已经具备开始开发最小目标应用的能力，不表示已经达到生产就绪。
 
-## 最终要亲手完成的系统
+## 责任分工
 
-```text
-上层运行时
-  → JSON 任务请求
-  → 单次 Agents SDK 运行
-  → 只读文档工具 / 只读查询工具
-  → 结构化 WorkerResult
-  → 上层运行时生成最终答复
-```
+| 层 | 拥有什么 | 不拥有什么 |
+| --- | --- | --- |
+| Agents SDK | Agent loop、工具编排、Session、streaming、Trace | 业务完成标准、资料批准、终端 UI |
+| 应用层 | 用例、命令、类型化事件、失败分类、最少审计元数据 | 第二套 Agent runtime、通用 runtime framework |
+| 终端适配器 | 输入、快捷键、批量刷新、Markdown/表格渲染 | 工作流、SDK Session、权威运行状态 |
 
-SDK 负责模型与工具之间的循环。应用代码仍负责工具实现、权限边界、超时、结果
-校验、记录和对外入口。
+Session 只保存对话连续性，Trace 只保存可观测路径，终端状态只服务当前展示。权威的
+运行结论是应用返回的 `RunOutcome`；必要业务记录必须由应用显式保存。
 
 ## 学习范围
 
-| 必须掌握 | 本轮暂不学习 |
+| 必须掌握 | 本轮明确不加入 |
 | --- | --- |
-| `Agent` 与 `Runner` | handoff 与 agents-as-tools |
-| `output_type` 与 Pydantic | sessions 与长期记忆 |
-| `RunContextWrapper` | streaming、Realtime 与 voice |
-| 本地 `function_tool` | sandbox agents |
-| 工具超时与错误传播 | 人工审批与可恢复暂停 |
-| `max_turns` 与运行级超时 | 通用多 Agent 框架 |
-| `RunResult` 与状态分类 | 完整 eval 平台 |
-| tracing 与敏感数据控制 | 自定义 `ModelProvider`、自动路由与故障转移 |
-| 确定性测试与一次真实 smoke run | 生产实验执行 |
+| `Agent`、`Runner.run`、`Runner.run_streamed` | handoff 与 agents-as-tools |
+| `output_type`、Pydantic、应用拥有的 `RunOutcome` | 多 Agent |
+| `RunContextWrapper` 与来源 provenance | 人工审批与写操作 |
+| 本地只读 `function_tool` | SandboxAgent |
+| `RunConfig`、tracing 与脱敏记录 | GUI、Realtime 与 voice |
+| SDK Session 与一种 capstone 会话策略 | 通用 runtime abstraction |
+| streaming 事件、取消和完成判定 | 自动路由、故障转移与完整 eval 平台 |
+| prompt-toolkit、Rich、plain mode | 生产部署与真实私有数据接入 |
 
-被推迟的内容不是不重要，而是当前只读 worker 不依赖它们。需要时再按真实需求
-增量学习。
+工具始终只读。最终双通道采用应用侧确定性组合，不增加专用结果提交工具：自然语言由
+Agent 流出，状态、provenance、evidence 和错误由应用从受控工具结果与 settled run 组装。
 
 ## 学习方式
 
-整条路线只维护一个逐步演进的项目，不为每个概念复制一个 demo。
+整条路线只维护一个逐步演进的项目。教材按“学习结果 → 核心内容 → 习题 → 实战 →
+完成标准 → 版本与官方参考”组织。只在行为必须验证时写代码；教材提供最小接口片段、事件
+映射示例和测试骨架，不提供 capstone 完整实现。
 
-教材编写和学习分成两部分。
-
-编写教材时：
-
-1. 先阅读项目锁定版本对应的官方文档、源码和 examples；
-2. 只选择完成本章目标必须掌握的知识；
-3. 优先改写版本匹配的官方示例，并说明来源和改动；
-4. 用安装的 SDK 和自动检查核对教材中的接口；
-5. 在文末记录版本、核对日期和参考资料。
-
-学习时：
-
-1. 教材已经包含本章必需内容；先阅读核心内容和示例；
-2. 完成概念题、代码阅读题或判断题，再展开参考答案；
-3. 只有需要实际验证时才编码；多个连续章节可以共用一次实战；
-4. 运行检查，确认结果符合本模块的完成标准。
-
-教材按“核心内容 → 习题 → 参考”组织。实战题放在确实需要编码的章节中，或者放在
-几个相关章节之后。官方文档用于追溯来源和升级时核对，不作为默认必读作业。
+每章使用 `openai-agents==0.20.0` 的官方文档、源码或 examples 核对接口。第三方端点的
+兼容性只能由显式 smoke test 证明，不能由“OpenAI-compatible”这一名称推断。
 
 ## 模块与完成标准
 
-### M00：跑通一次可观察的 Agent 运行（45 分钟）
+### M00：首个可观察 Agent（45 分钟）
 
 学习：
 
-- Agents SDK 与直接使用 Responses API 的职责差异；
-- `Agent`、`Runner.run`、一次运行和停止条件；
-- 默认 trace 中能看到什么。
+- Agents SDK 与直接使用 Responses API 的责任区别；
+- `Agent`、`Runner.run`、Agent loop 和 `RunResult`；
+- 一次 run 为什么可能包含多次模型调用；
+- trace 能说明什么，以及它为什么不是会话或业务记录。
 
-动手：
+实战：显式配置模型，运行一个单 Agent，读取 `final_output`，在 Trace viewer 中找到运行。
 
-- 用显式模型运行一个单 Agent；
-- 打印 `final_output`；
-- 在 Trace viewer 中找到该次运行。
+完成标准：能说明 SDK 推进循环、应用规定能力边界；最终产品只有一个 SDK Agent runtime。
 
-完成标准：
-
-- 能画出“模型 → 工具 → 模型 → 最终输出”的循环；
-- 能说明为什么上层应用仍然拥有工具、权限和持久状态；
-- 代码可重复运行，密钥不进入仓库。
-
-提交：`feat(m00): 跑通首个可追踪的 Agent`
-
-### M01：建立类型化任务与结果模型（60 分钟）
+### M01：结构化结果与本地 context（75 分钟）
 
 学习：
 
-- `output_type` 如何让最终结果成为 Pydantic 对象；
-- 模型输入与本地 `RunContextWrapper` 的区别；
-- 为什么下游程序不应解析自由文本。
+- `TaskRequest`、`Evidence`、`WorkerError`、`WorkerResult`；
+- `output_type`、严格 JSON Schema 与 `final_output_as`；
+- 模型输入与 `RunContextWrapper` 中本地依赖的区别；
+- 最终结构化运行结果与用户可见流式回答是两个不同接口问题。
 
-动手：
+实战：完成一次结构化单 Agent 运行，但暂不解决双通道输出。
 
-- 定义 `TaskRequest`、`Evidence`、`WorkerError` 和 `WorkerResult`；
-- 让单 Agent 返回类型化结果；
-- 把 logger、允许的资料根目录等依赖放入本地 context。
+完成标准：结果可直接序列化；logger、路径、客户端和凭据不会自动进入模型上下文。
 
-完成标准：
-
-- 正常运行返回可直接序列化的 `WorkerResult`；
-- 能指出哪些信息模型可见、哪些只在本地代码中；
-- 不把凭据、客户端或 logger 拼进 prompt。
-
-提交：`feat(m01): 建立结构化结果与上下文边界`
-
-### M02：只给 Agent 必需的只读能力（90 分钟）
+### M02：只读工具与来源边界（105 分钟）
 
 学习：
 
-- Python 类型标注和 docstring 如何形成函数工具 schema；
-- 工具 allowlist、参数约束、超时和错误策略；
-- 工具返回值如何重新进入模型上下文。
+- `function_tool` 的名称、说明、参数 schema 与错误策略；
+- `ApprovedSource` / `SourceProvenance` 的 `source_id`、`revision` 和 `sha256`；
+- fixture 文件 allowlist、路径解析、校验和与最小返回值；
+- 模拟只读服务查询的参数、单次 timeout 和异常边界；
+- 只读 CLI adapter 的固定可执行程序、只读子命令、参数、环境、时间和输出大小边界。
 
-动手：
+实战：实现 fixture 资料工具、模拟查询工具和公开合成 CLI adapter。CLI 使用
+`asyncio.create_subprocess_exec`，禁止 `shell=True`，不接收任意命令字符串，不把凭据、
+完整环境或无限制原始输出交给模型。
 
-- 实现一个只能读取 fixture 目录的文本工具；
-- 实现一个只读的模拟服务查询工具；
-- 为异步工具设置单次超时；
-- 直接测试工具的成功、越界路径和底层失败。
+完成标准：工具集没有外部写能力；来源可复查；越界、超时和超限不会伪装成正常数据；
+直接测试不调用模型。
 
-完成标准：
-
-- 工具集合中不存在写操作；
-- 路径不能逃出允许根目录；
-- 超时或异常不会被伪装成正常数据；
-- 不调用模型也能测试工具逻辑。
-
-提交：`feat(m02): 增加有边界的只读函数工具`
-
-### M03：让不完整和失败保持真实（90 分钟）
+### M03：有界运行与真实失败（75 分钟）
 
 学习：
 
-- `RunResult`、`final_output` 和运行产生的 items；
-- `max_turns`、工具超时、运行级超时和 SDK 异常；
-- “SDK 调用成功”与“领域任务完成”的区别。
+- `RunResult`、`new_items`、`raw_responses` 与领域 `RunOutcome` 的区别；
+- 工具 timeout、`max_turns` 和运行级 timeout；
+- `completed`、`incomplete`、`failed`、`cancelled`、`timed_out`；
+- 稳定 reason/code 与 SDK 异常文本的边界。
 
-动手：
+实战：为缺资料、工具失败、模型失败、turn 上限、超时和取消建立一致结果。
 
-- 定义 `completed`、`incomplete`、`failed` 三种状态；
-- 在应用包装层统一处理超时、turn 上限、工具失败和无效最终输出；
-- 保证异常路径仍能向调用者返回机器可读错误；
-- 覆盖资料缺失、工具失败、超时和结果不完整。
+完成标准：任何失败、取消、超时或不完整路径都不能变成 `completed`；调用方无需解析日志。
 
-完成标准：
-
-- 四种非正常场景都有稳定、可断言的结果；
-- `completed` 不能同时包含阻止任务完成的错误；
-- 上层调用者不需要解析日志才能判断任务是否完成。
-
-提交：`feat(m03): 建立有界运行与真实失败语义`
-
-### M04：用 trace 和测试看清实际发生了什么（75 分钟）
+### M04：Trace、最小元数据与确定性测试（60 分钟）
 
 学习：
 
-- 默认 trace 的 run、model 和 function-tool spans；
-- `trace_include_sensitive_data` 的默认行为和风险；
-- 单元测试、集成测试和真实 smoke run 的不同证据。
+- `workflow_name`、`trace_id`、`group_id` 和 `trace_include_sensitive_data=False`；
+- application session ID、application run ID、trace ID 的不同生命周期；
+- `RunRecord` 的 provenance、工具开始/结束分类、completion 分类和 evidence references；
+- 单元测试、假 runner 集成测试和真实 smoke test 的证据差异。
 
-动手：
+实战：在调用点注入 runner，保存最小记录，默认排除 `smoke` 测试。
 
-- 给 workflow 指定稳定名称和关联标识；
-- 关闭敏感输入与工具内容的 trace 捕获；
-- 保存一份仅含状态、证据引用、错误分类和运行标识的本地记录；
-- 通过依赖注入替换 runner 边界，写无真实模型调用的确定性测试；
-- 保留一项显式标记的真实模型 smoke test。
+完成标准：Trace 与本地记录可关联；不保存凭据、完整 prompt、完整资料、无限制工具输出
+或用户敏感内容。
 
-完成标准：
+### M05：Sessions、streaming 与取消（120 分钟）
 
-- 能从 trace 解释一次运行调用了哪些工具以及在哪里失败；
-- 仓库、测试输出和本地记录都不含密钥或原始私有数据；
-- 默认测试不会意外产生真实 API 调用。
+学习：
 
-提交：`test(m04): 增加脱敏观测与确定性验证`
+- 一次应用 turn 对应一次 `Runner.run_streamed`；
+- `to_input_list()`、SDK Session、`previous_response_id` 的取舍；
+- capstone 选择可注入 Session factory 与临时 SQLiteSession；
+- `ResponseTextDeltaEvent`、`RunItemStreamEvent`、`tool_called`、`tool_output`；
+- 持续消费 `stream_events()` 到结束后再读取最终状态；
+- `result.cancel()` 与 `result.cancel(mode="after_turn")`。
 
-### M05：完成 JSON-in/JSON-out 证据 worker（120 分钟）
+兼容性 spike：在锁定 SDK 与显式目标模型上记录 `output_type` + raw text delta 的实际形状。
+不得把结构化 JSON delta 直接显示给用户，也不得写脆弱的 partial JSON parser。
 
-动手完成最终 capstone：
+Capstone 采用一个经过测试的双通道方案：Agent 的最终消息保持自然语言并产生
+`message_delta`；应用从受控工具结果、context 累积器、异常映射与 settled final text
+确定性组装 `RunOutcome`。整个过程只有一个 Agent、一次 Runner run，没有结果提交工具或
+Agent loop 之外的额外模型调用。
 
-- 从标准输入或文件接收一个任务请求；
-- worker 自己读取允许的资料并按需调用只读查询工具；
-- 标准输出只写一个 `WorkerResult` JSON；
-- 日志写到标准错误；
-- 正常、不完整和失败有明确状态与退出行为；
-- 调用者只收到整理结果，不需要收到全部源文档；
-- 自动检查覆盖正常、缺少资料、工具失败、超时和不完整结果；
-- 完成一次真实模型端到端运行。
+完成标准：fake stream 测试覆盖正常 settle、资料覆盖不足、失败、超时和两种取消；真实
+模型 spike 与 smoke test 都是显式 opt-in。
 
-完成标准：
+### M06：UI 无关的应用用例与类型化事件（105 分钟）
 
-- 一个全新的调用方只依赖 JSON schema 就能正确调用；
-- 运行过程可复查，但不会无限保存工具原始输出；
-- 没有 sessions、handoff、写工具或通用框架；
-- 学习者可以不看现成实现，重新写出核心骨架。
+学习：
 
-提交：`feat(m05): 完成有边界的只读证据 worker`
+- `Submit`、`Cancel` 两个命令；
+- `MessageDelta`、`ToolStarted`、`ToolFinished`、`EvidenceFound`、
+  `RunStateChanged`、`Final`、`Error`；
+- 应用层把 SDK raw/high-level events 翻译成稳定事件；
+- 用例异步发出事件并返回最终 `RunOutcome`；
+- 当前运行任务与取消控制。
 
-### M06：目标项目就绪评审（45 分钟）
+实战：实现一个直接依赖 Agents SDK 的用例，不建立通用 runtime interface。终端不得看到
+SDK 事件对象；`Cancel` 必须调用当前 `RunResultStreaming`/任务的取消路径，而不是设置一个
+无人消费的布尔值。
 
-学习者完成一次 15 分钟讲解和一次小改动：
+完成标准：测试事件顺序、正常结束、工具失败、模型失败、超时、取消、不完整结果和同一
+session 的连续两轮对话。
 
-- 从上层调用到结构化返回，逐层解释数据和控制权；
-- 解释每个失败场景由哪一层识别；
-- 现场增加一个新的只读字段或工具，并补测试；
-- 写出把通用 worker 接到目标项目时需要替换的边界清单。
+### M07：薄终端适配器（90 分钟）
 
-只有讲解、小改动、自动检查和真实 smoke run 都通过，才判定“具备开始目标功能
-开发的能力”。
+学习：
 
-提交：`docs(m06): 记录 worker 就绪证据与剩余问题`
+- `PromptSession.prompt_async()`、历史、快捷键和 Ctrl-C；
+- Rich 只渲染已完成 Markdown、表格和有限状态；
+- token delta 的小批次 append-only 刷新；
+- stdout/cursor 单一所有者；
+- 无 ANSI 的 `--plain` 模式。
+
+实战：交互模式和 plain mode 复用 M06 同一个用例。活动运行时 Ctrl-C 转成 `Cancel`；没有
+活动运行时才退出。不使用全屏 Rich Live，也不按 token 重绘完整 transcript。
+
+完成标准：fake event source 覆盖 renderer、批处理、plain mode、Ctrl-C 和取消；默认测试
+不打开真实 TTY。
+
+### M08：公开 capstone 与就绪评审（75 分钟）
+
+Capstone 是一个用户直接使用的、单 Agent、只读终端助手。公开合成任务是检查一组虚构
+设备的维护记录；资料、设备名和模拟 CLI 输出都在仓库 fixture 中生成。
+
+验收：
+
+1. 交互终端提交问题并收到流式自然语言回答；
+2. 同一用例产生结构化 `RunOutcome`；
+3. SDK Session 支持同一 session 的连续两轮；
+4. 只加载 allowlist 中的最少资料；
+5. 只读 CLI/查询工具按需调用；
+6. 记录 source provenance；
+7. trace 与脱敏应用元数据可关联；
+8. 正常、缺资料、工具失败、模型失败、超时、取消和不完整结果可区分；
+9. plain mode 与交互模式使用同一用例；
+10. 没有写工具、handoff、多 Agent、审批、GUI 或通用 runtime framework；
+11. 默认测试不联网；
+12. 完成一次显式真实模型 smoke run 和一次真实终端运行。
+
+就绪评审：15 分钟架构讲解；不看答案完成一个小型跨层修改；运行全部自动检查；完成真实
+模型与终端 smoke run；解释 Session、Trace、应用 `RunOutcome` 和终端状态为什么不同。
+
+教材不给出 capstone 完整实现。学习者必须亲自组合前八章接口并留下验证证据。
 
 ## 建议日程
 
-用两个相邻的专注时段完成：
+- 第一段约 3 小时 45 分：M00–M02；
+- 第二段约 3 小时 15 分：M03–M04 与 M05 前半；
+- 第三段约 3 小时 45 分：M05 后半–M07；
+- 第四段约 1 小时 15 分：M08。
 
-- 第一段约 4 小时：M00–M02；
-- 第二段约 5 小时：M03–M06。
-
-可以压缩到一天，但仍应在第二天用 20 分钟不看代码重建 M05 骨架。若重建失败，
-只复习暴露出的模块，不重学整套课程。
-
-## Git 管理方式
-
-使用独立仓库 `M1racleShih/openai-agents-sdk-learning-lab`：
-
-- 初始为 private，完成公开安全检查后再改为 public；
-- `main` 上保留一个不断演进的 capstone；
-- 每个模块一个可运行的 Conventional Commit，不使用分支或 PR 制造额外流程；
-- `LEARNING_LOG.md` 只记录完成时间、验证证据、纠正的一个误解和一个未决问题；
-- 完成 M06 后打 `v0.1-learning-complete` 标签；
-- 不放入公司名称、内部系统名、私有文档、真实服务地址、凭据或真实数据。
-
-最小仓库结构：
-
-```text
-README.md
-README-en.md
-LEARNING_PLAN.md
-LEARNING_PLAN-en.md
-LEARNING_LOG.md
-LEARNING_LOG-en.md
-pyproject.toml
-uv.lock
-mkdocs.yml
-docs/
-  index.md
-  index.en.md
-  lessons/
-src/evidence_worker/
-tests/
-fixtures/
-```
-
-不使用 GitHub Project、课程 issue 列表或每课一份复制代码。Git 历史和学习日志
-已经足够追踪过程。
+总计约 12.5 小时。真实模型与终端 smoke run 的等待时间不计入阅读时间。
 
 ## 版本与环境策略
 
-- 使用 Python 3.12 和 `uv`；
-- 首次提交锁定当日确认的 `openai-agents` 版本；
-- 模型名称显式配置并记录，不依赖 SDK 默认模型；
-- API key 只通过环境变量或本机密钥设施提供；
-- `.env.example` 只包含变量名，不包含任何真实值；
-- 升级 SDK 时单独提交，并重新运行全部验收场景。
+- Python 3.12 与 `uv`；
+- `openai-agents==0.20.0`、`prompt-toolkit==3.0.53`、`rich==15.0.0`；
+- `uv.lock` 是复现依据；
+- 模型 ID 必须显式配置；
+- API key 只来自环境变量或本机密钥设施；
+- 默认 `pytest` 排除真实模型 smoke test；
+- SDK 升级后重新核对 Agent、Runner、structured output、function_tool、RunConfig、tracing、
+  sessions、streaming、cancel 和事件接口。
 
-2026-07-30 启动时确认的 SDK 版本是 0.19.1。版本会继续变化，`uv.lock` 才是
-这次学习过程的可复现依据。
+0.20.0 的官方发布说明指出隐式默认模型发生变化，并包含 MCP 依赖迁移。课程不依赖默认
+模型，也不在当前范围使用 MCP，因此这两项不会改变课程架构。
+
+从上一锁定版本升级后的接口审计确认：课程使用的 `Agent`/`output_type`、`Runner.run`、
+`Runner.run_streamed`、`function_tool` timeout、`RunConfig` tracing 字段、`SQLiteSession`、
+stream events 与两种 cancel mode 仍可用。`RunConfig` 新增的可选工具名冲突策略不改变本课程
+调用；`tests/test_dependency_baseline.py` 固定检查当前依赖版本和这些公开入口。
 
 ## 资料来源
 
-本课程以项目锁定版本的 Python SDK 资料为主：
+本路线最后核对：2026-08-11。锁定版本：`openai-agents==0.20.0`。
 
-- [Python SDK v0.19.1](https://github.com/openai/openai-agents-python/tree/v0.19.1)
-- [Quickstart](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/quickstart.md)
-- [Agent definitions](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/agents.md)
-- [Running agents](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
-- [Results](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md)
-- [Context management](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/context.md)
-- [Tools](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tools.md)
-- [Tracing](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
-- [Versioned examples](https://github.com/openai/openai-agents-python/tree/v0.19.1/examples)
+- [Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
+- [Running agents](https://developers.openai.com/api/docs/guides/agents/running-agents)
+- [Results and state](https://developers.openai.com/api/docs/guides/agents/results)
+- [Integrations and observability](https://developers.openai.com/api/docs/guides/agents/integrations-observability)
+- [Python SDK streaming](https://openai.github.io/openai-agents-python/streaming/)
+- [Python SDK sessions](https://openai.github.io/openai-agents-python/sessions/)
+- [Python SDK v0.20.0 source and examples](https://github.com/openai/openai-agents-python/tree/v0.20.0)
+- [Official releases](https://github.com/openai/openai-agents-python/releases/tag/v0.20.0)
 
-[OpenAI Agents SDK 开发者指南](https://developers.openai.com/api/docs/guides/agents)
-用于补充整体定位、Agents SDK 与 Responses API 的区别，以及当前官方方向。两处资料
-不一致时，课程中的接口和行为以 `v0.19.1` 源码、文档和本地实际结果为准。
-
-学习者不需要通读这些资料。每章教材会选择必需内容，并在文末列出具体来源。
-
-教材组织参考 Hello-Agents 的
-[概念章节](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter3/%E7%AC%AC%E4%B8%89%E7%AB%A0%20%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80.md)
-和 [实践章节](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter4/%E7%AC%AC%E5%9B%9B%E7%AB%A0%20%E6%99%BA%E8%83%BD%E4%BD%93%E7%BB%8F%E5%85%B8%E8%8C%83%E5%BC%8F%E6%9E%84%E5%BB%BA.md)。
-这里只借鉴“先解释概念，再给例子和习题，最后列出参考”的写法，不把其中的技术内容
-作为本课程依据。
+每章选择完成当章目标所需的最少资料，并记录具体来源；学习者不需要预先通读全部官方
+文档。
 
 ## 开始方式
 
 从 [M00 中文教材](docs/lessons/m00-first-agent.md) 或
-[M00 English lesson](docs/lessons/m00-first-agent.en.md)开始：
-
-1. 阅读核心内容和示例；
-2. 先完成概念题和代码阅读题，再查看参考答案；
-3. 按实战题要求编写第一个 Agent；
-4. 运行仓库检查和一次真实模型调用；
-5. 在 Trace viewer 中找到这次运行，然后把验证证据写入学习记录。
+[M00 English lesson](docs/lessons/m00-first-agent.en.md) 开始。M00 保持 `in_progress`，其余
+模块只有在学习者亲自完成实战和验证后才能从 `pending` 变更状态。

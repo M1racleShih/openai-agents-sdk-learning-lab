@@ -8,13 +8,15 @@
 
 | 模块 | 状态 | 完成时间 | 验证证据 |
 | --- | --- | --- | --- |
-| M00：首个可追踪 Agent | in_progress | — | — |
+| M00：首个可观察 Agent | in_progress | — | — |
 | M01：结构化结果与上下文 | pending | — | — |
-| M02：只读函数工具 | pending | — | — |
+| M02：只读工具与来源边界 | pending | — | — |
 | M03：有界运行与失败语义 | pending | — | — |
-| M04：脱敏观测与确定性测试 | pending | — | — |
-| M05：JSON-in/JSON-out worker | pending | — | — |
-| M06：目标项目就绪评审 | pending | — | — |
+| M04：Trace、最小元数据与确定性测试 | pending | — | — |
+| M05：Sessions、streaming 与取消 | pending | — | — |
+| M06：UI 无关用例与类型化事件 | pending | — | — |
+| M07：薄终端适配器 | pending | — | — |
+| M08：公开 capstone 与就绪评审 | pending | — | — |
 
 状态只使用 `pending`、`ready`、`in_progress` 和 `passed`。
 

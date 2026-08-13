@@ -3,17 +3,17 @@ title: M02 · 有边界的只读工具
 description: 从 Python 函数生成工具 schema，并限制路径、参数、超时和错误传播。
 ---
 
-<p class="lesson-kicker">M02 · 90 分钟 · 概念 + 实战</p>
+<p class="lesson-kicker">M02 · 105 分钟 · 概念 + 实战</p>
 
 # 有边界的只读工具
 
 <p class="lesson-deck">只注册任务需要的读取能力，并让越界、超时和底层失败直接暴露。</p>
 
 <div class="lesson-meta" aria-label="课程信息">
-  <span>SDK v0.19.1</span>
-  <span>10 道巩固题</span>
-  <span>2 个只读工具</span>
-  <span>5 项直接检查</span>
+  <span>SDK v0.20.0</span>
+  <span>14 道巩固题</span>
+  <span>3 个只读工具</span>
+  <span>8 项直接检查</span>
 </div>
 
 ## 学习结果
@@ -28,19 +28,23 @@ description: 从 Python 函数生成工具 schema，并限制路径、参数、�
 - 给异步工具设置单次超时；
 - 选择工具异常是返回给模型，还是继续抛给应用；
 - 说明工具返回值怎样进入下一轮模型输入；
-- 不调用模型，直接测试读取逻辑和模拟服务逻辑。
+- 用 `source_id`、`revision` 和 `sha256` 记录批准资料的 provenance；
+- 用 `asyncio.create_subprocess_exec` 包装一个固定、只读的模拟 CLI；
+- 限制 CLI 的子命令、参数、环境、时间、stdout 和 stderr；
+- 不调用模型，直接测试资料、模拟服务和 CLI adapter。
 
 !!! abstract "本章边界"
 
     本章只添加本地只读函数工具及其直接测试。它不添加写工具、hosted tool、MCP、
-    approval、session 或 handoff，也不统一定义运行级失败结果；M03 会处理最后一项。
+    approval、Session、handoff、通用命令解析器或 sandbox，也不统一定义运行级失败结果；
+    M03 会处理最后一项。
 
 ## 核心内容
 
 ### 1. `function_tool` 把 Python 接口变成模型可调用的工具
 
 模型不能直接调用任意 Python 函数。应用先用 `function_tool` 创建一个 `FunctionTool`，
-再把这个对象放入 `Agent.tools`。`v0.19.1` 会读取函数签名和 docstring：
+再把这个对象放入 `Agent.tools`。`v0.20.0` 会读取函数签名和 docstring：
 
 ```text
 函数名                           → 工具名
@@ -113,7 +117,46 @@ agent = Agent[LessonContext](
 `RunContextWrapper[LessonContext]` 可以作为函数的第一个参数。SDK 会把它传给本地函数，
 但不会把它放入模型可见的参数 schema。其余参数才由模型填写。
 
-### 3. 路径边界必须在打开文件前检查
+### 3. 批准来源必须能复查身份和版本
+
+“某个路径在允许目录里”只回答了能不能读，还没有回答读到的是哪一版。应用先维护一份
+最小来源 allowlist，再把模型可用的 `source_id` 解析成固定路径和完整性元数据：
+
+```python
+from pydantic import BaseModel
+
+
+class ApprovedSource(BaseModel):
+    source_id: str
+    relative_path: str
+    revision: str
+    sha256: str
+
+
+class SourceProvenance(BaseModel):
+    source_id: str
+    revision: str
+    sha256: str
+```
+
+`ApprovedSource` 属于应用配置，包含本地相对路径；`SourceProvenance` 属于结果和最小记录，
+不暴露路径。读取流程应按固定顺序执行：
+
+```text
+模型提交 source_id
+  → 应用在 allowlist 中查找 ApprovedSource
+  → 解析并检查路径仍在 fixture 根目录
+  → 有界读取 bytes，计算 sha256
+  → 与批准 checksum 比较
+  → 解码并返回最小文本 + SourceProvenance
+```
+
+版本可以是公开 fixture 的修订号、发布日期或合成版本标识；同一项目只选一种稳定含义。
+checksum 必须覆盖工具实际读取的 bytes。资料发生变化时先更新批准清单和对应测试，不要在
+运行中接受模型提供的新 checksum。缺少来源、revision 不符或 checksum 不符都是真实失败，
+不能返回空字符串或旧内容。
+
+### 4. 路径边界必须在打开文件前检查
 
 下面的普通函数展示最小路径检查。它要求调用方提供相对路径，解析 `..` 和符号链接，
 再确认最终路径仍在允许根目录中。
@@ -184,9 +227,9 @@ def read_public_note(
 这里显式传入 `failure_error_function=None`。文件不存在或路径越界时，异常不会被改写成
 一段看似正常的工具数据。
 
-### 4. 异步工具需要单次超时和明确的错误策略
+### 5. 异步工具需要单次超时和明确的错误策略
 
-外部查询即使只读，也可能一直等待。`v0.19.1` 的异步函数工具可以设置 `timeout`。本课程
+外部查询即使只读，也可能一直等待。`v0.20.0` 的异步函数工具可以设置 `timeout`。本课程
 选择 `timeout_behavior="raise_exception"`，让 `ToolTimeoutError` 结束运行，再由 M03 的
 应用包装层转换成稳定的 `WorkerResult`。
 
@@ -233,15 +276,15 @@ async def query_public_catalog(
 
 `function_tool` 的默认异常策略会把工具异常改成模型可见的错误消息，让模型有机会恢复。
 默认超时策略 `error_as_result` 也会返回明确的超时消息。这些策略适合允许模型重试或改用
-其他工具的流程。本课程的 worker 需要由上层程序稳定判断失败，所以让两类异常继续抛出。
+其他工具的流程。本课程的应用用例需要稳定判断失败，所以让两类异常继续抛出。
 不要捕获异常后返回空字符串、空列表或“没有结果”；这些值会把失败伪装成正常数据。
 
 !!! note "超时只适用于异步函数工具"
 
-    `v0.19.1` 只支持给异步 `function_tool` handler 设置超时。需要超时的服务查询应写成
+    `v0.20.0` 只支持给异步 `function_tool` handler 设置超时。需要超时的服务查询应写成
     `async def`。
 
-### 5. 工具返回值会进入下一轮模型输入
+### 6. 工具返回值会进入下一轮模型输入
 
 一次工具调用按以下顺序发生：
 
@@ -262,7 +305,64 @@ async def query_public_catalog(
 应由应用显式序列化，而不是依赖对象的 `str()`。无论格式怎样，工具 schema 只约束输入，
 不会自动证明返回数据正确或安全。
 
-### 6. 直接测试普通逻辑，再检查工具包装
+### 7. 只读 CLI adapter 固定程序和语法
+
+“执行一个命令”不是本课程的工具。应用只暴露一个公开合成 CLI 的两个只读动作，例如查询
+虚构设备的 `status` 或 `history`。可执行程序路径来自本地 context，子命令来自代码中的
+Literal/allowlist，设备标识经过长度与字符校验；模型不能提供命令字符串、可执行程序、
+工作目录或环境变量。
+
+```python
+import asyncio
+from typing import Literal
+
+
+ReadonlySubcommand = Literal["status", "history"]
+STDOUT_LIMIT = 32 * 1024
+STDERR_LIMIT = 4 * 1024
+
+
+async def run_readonly_cli(
+    executable: str,
+    subcommand: ReadonlySubcommand,
+    device_id: str,
+) -> str:
+    argv = [executable, subcommand, "--device-id", device_id]
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
+    )
+    stdout, stderr = await communicate_bounded(
+        process,
+        timeout_seconds=2.0,
+        stdout_limit=STDOUT_LIMIT,
+        stderr_limit=STDERR_LIMIT,
+    )
+    if process.returncode != 0:
+        raise ReadonlyCliError("READ_ONLY_CLI_FAILED")
+    return parse_allowed_fields(stdout)
+```
+
+片段故意省略 `communicate_bounded`、`ReadonlyCliError` 和 `parse_allowed_fields` 的实现。
+实战必须用两个并发 reader 按固定 chunk 排空 pipe，一旦任一流超过上限就终止子进程并等待
+回收；只在 EOF、退出码和大小检查都完成后返回。不能先用无界 `communicate()` 把全部输出
+读入内存再检查大小。
+
+边界逐项说明：
+
+- 使用 `create_subprocess_exec` 的参数列表，不使用 shell，也不存在 `shell=True`；
+- 可执行程序和只读子命令固定，拒绝 `;`、管道、重定向和额外选项；
+- 环境从空白 allowlist 构造，不复制 `os.environ`，因此凭据不会继承；
+- timeout 后先 kill/terminate，再 `await process.wait()`，避免遗留子进程；
+- stderr 只用于本地分类，不能连同异常文本交给模型；
+- stdout 先做大小和 UTF-8/JSON 校验，再只返回允许字段，不返回无限制原始输出。
+
+这不是 sandbox。它只让一个已知的合成程序执行两个已知只读查询。若真实需求需要任意命令
+或不受信任程序，本课程方案不适用。
+
+### 8. 直接测试普通逻辑，再检查工具包装
 
 工具逻辑不需要模型参与。把文件读取和服务查询写成接收普通依赖的函数，测试可以直接
 传入临时目录或假的客户端：
@@ -286,7 +386,8 @@ async def test_catalog_failure_is_not_normal_data() -> None:
 
 这些片段故意没有给出 `FailingCatalog`、成功场景和工具包装检查的完整实现。实战需要你
 自己补齐。工具包装另做小检查：确认名称、schema 约束、`timeout_seconds`、
-`timeout_behavior` 和最终 allowlist。这样即使没有 API key，也能验证权限边界和错误行为。
+`timeout_behavior` 和最终 allowlist；CLI 另外用一个测试脚本制造超时、超量输出、非零退出
+和带凭据的父环境。这样即使没有 API key，也能验证权限边界和错误行为。
 
 ## 习题
 
@@ -305,6 +406,10 @@ async def test_catalog_failure_is_not_normal_data() -> None:
 9. `timeout_behavior="raise_exception"` 与默认的 `error_as_result` 有什么区别？
 10. 为什么直接测试 `read_text_from_root` 和 `fetch_public_entry` 比让模型调用工具更适合
     验证边界？
+11. 为什么 `source_id`、`revision` 和 `sha256` 缺一项就难以复查实际使用的资料？
+12. 为什么 CLI adapter 不能接收一个命令字符串，即使 instructions 写了“只读”？
+13. 为什么先无界读取 stdout 再检查长度不算输出大小边界？
+14. 为什么不能把完整 `os.environ` 传给合成 CLI？
 
 <details class="exercise-answers">
 <summary>参考答案</summary>
@@ -326,25 +431,39 @@ async def test_catalog_failure_is_not_normal_data() -> None:
    让模型决定是否恢复。
 10. 普通函数测试没有模型随机性、网络费用或 API key 依赖，可以精确构造成功、越界和
     底层失败，并直接断言结果或异常；还可以单独检查工具包装的超时配置。
+11. `source_id` 说明逻辑身份，`revision` 说明版本，`sha256` 证明实际 bytes。缺少任一项都
+    可能把同名但不同内容的资料混为一谈。
+12. 命令字符串会重新引入 shell 语法和任意参数组合。代码应固定可执行程序与子命令，并把
+    每个参数作为独立 argv 元素传入。
+13. 无界读取已经允许子进程消耗任意内存。正确做法是在读取 pipe 的过程中累计 bytes，超过
+    限制立即终止并回收子进程。
+14. 父环境可能包含 API key、代理凭据或其他秘密。合成 CLI 只得到运行所需的最小固定环境。
 
 </details>
 
-### 实战：实现两个有边界的只读工具
+### 实战：实现三类有边界的只读工具
 
 在上一章的数据模型和本地 context 基础上完成以下任务。你可以新建
 `src/evidence_worker/tools.py` 和 `tests/test_tools.py`，但不要复制本章片段作为完整答案。
 
-1. 在 `fixtures/` 下准备公开练习文本；工具只能读取这个目录中的 UTF-8 `.txt` 文件；
-2. 实现一个接收根目录和相对路径的普通读取函数，再用 `function_tool` 做薄包装；
+1. 在 `fixtures/` 下准备公开练习文本，并为每份资料建立包含 `source_id`、`revision` 和
+   `sha256` 的批准清单；
+2. 实现一个按 `source_id` 查表、检查根目录与 checksum 的普通读取函数，再用
+   `function_tool` 做薄包装；
 3. 拒绝绝对路径、`..` 越界、指向根目录外的符号链接、非 `.txt` 文件和不存在的文件；
 4. 实现一个只支持查询的模拟服务客户端，并把它放入 M01 的本地 context；
 5. 实现一个接收模拟客户端和资料标识的普通异步查询函数，再做薄工具包装；
 6. 给异步工具设置 2 秒单次超时，并让 handler 异常和超时继续抛出；
 7. 给两个模型可填参数加上必要的长度或格式约束；
-8. 只把这两个工具注册给 Agent，确认 allowlist 中没有写操作；
-9. 不调用模型，直接覆盖以下 4 项：文本读取成功、路径边界、查询成功、底层查询失败；
+8. 实现一个模拟只读 CLI adapter：固定可执行程序，只允许 `status` / `history`，使用
+   `create_subprocess_exec`，限制参数、环境、2 秒 timeout、32 KiB stdout 和 4 KiB stderr；
+9. 只把资料读取、服务查询和 CLI 查询这三类入口注册给 Agent，确认没有外部写操作；
+10. 不调用模型，直接覆盖以下 6 项：文本读取成功、路径边界、checksum 不匹配、查询成功、
+    底层查询失败和 provenance 往返；
    路径边界检查应包含绝对路径、`..`、越界符号链接、非 `.txt` 文件和不存在的文件；
-10. 第 5 项直接检查生成的工具名称、参数 schema、`timeout_seconds=2.0`、
+11. CLI 测试覆盖允许命令、非法参数、超时、stdout/stderr 超限、非零退出，并证明父环境中的
+    假凭据没有进入子进程；
+12. 第 8 项直接检查生成的工具名称、参数 schema、`timeout_seconds=2.0`、
     `timeout_behavior="raise_exception"` 和最终 allowlist。
 
 先运行工具测试，再运行完整仓库检查：
@@ -358,27 +477,31 @@ uv run pytest
 
 完成标准：
 
-- Agent 的工具集合中只有两个只读入口；
+- Agent 的工具集合中只有三类窄的只读入口；
 - 任何提供给工具的路径都不能逃出允许的 fixture 根目录；
-- 参数不合法、文件缺失、底层异常和超时都不会变成正常数据；
-- 5 项直接检查都不调用模型，也不需要 API key；
+- 记录实际读取资料的 `source_id`、`revision` 和 `sha256`；
+- 参数不合法、文件缺失、checksum 不符、底层异常、超时和输出超限都不会变成正常数据；
+- CLI 不使用 shell，不继承凭据，不接受任意程序、子命令或选项；
+- 8 项直接检查都不调用模型，也不需要 API key；
 - 能指出每个工具返回给模型的准确字段或文本；
 - 仓库检查全部通过。
 
 本章没有给出实战的完整实现。核心内容分别展示了 schema、路径检查、超时和直接测试的
 最小片段；你需要自己定义模拟客户端、组合 context、完成两个工具并补齐全部测试。
 
-## 参考
+## 版本与官方参考
 
-本章最后核对日期：2026-08-01。项目锁定版本：`openai-agents==0.19.1`。
+本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
 
 - [当前 Agents SDK 指南：工具定位](https://developers.openai.com/api/docs/guides/tools#usage-in-the-agents-sdk)
-- [`v0.19.1` Tools：function tools](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tools.md#function-tools)
-- [`v0.19.1` function schema 源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/function_schema.py)
-- [`v0.19.1` function tool 与超时源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/tool.py)
-- [`v0.19.1` 基础工具示例](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/tools.py)
+- [`v0.20.0` Tools：function tools](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tools.md#function-tools)
+- [`v0.20.0` function schema 源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/function_schema.py)
+- [`v0.20.0` function tool 与超时源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/tool.py)
+- [`v0.20.0` 基础工具示例](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/tools.py)
 - [Python `pathlib`：解析路径与 `relative_to`](https://docs.python.org/3.12/library/pathlib.html)
+- [Python `asyncio` subprocess](https://docs.python.org/3.12/library/asyncio-subprocess.html)
 
-示例改动：把官方天气工具改成受限文本读取和只读目录服务查询；加入本地 context、Pydantic
-参数约束、解析后路径检查、显式异常传播和 2 秒单次超时；把工具 handler 拆成可直接测试
-的普通函数；省略完整 Agent 运行、hosted tools、MCP、handoff、approval 和实战完整答案。
+示例改动：把官方天气工具改成受限文本读取、只读目录服务查询和固定语法的合成 CLI；加入
+来源 provenance、本地 context、Pydantic 参数约束、解析后路径检查、显式异常传播、2 秒
+单次超时与输出大小限制；把 handler 拆成可直接测试的普通函数；省略完整 Agent 运行、
+hosted tools、MCP、handoff、approval、sandbox 和实战完整答案。

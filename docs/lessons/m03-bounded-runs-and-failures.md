@@ -3,17 +3,17 @@ title: M03 · 有界运行与真实失败
 description: 用状态一致性规则、轮次上限和运行超时，让不完整、超时和失败保持机器可读。
 ---
 
-<p class="lesson-kicker">M03 · 90 分钟 · 概念 + 实战</p>
+<p class="lesson-kicker">M03 · 75 分钟 · 概念 + 实战</p>
 
 # 有界运行与真实失败
 
 <p class="lesson-deck">限制一次运行能消耗的时间和轮次，并让调用方只看结果字段就知道任务是否完成。</p>
 
 <div class="lesson-meta" aria-label="课程信息">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>10 道巩固题</span>
-  <span>3 种领域状态</span>
-  <span>4 组异常场景</span>
+  <span>5 种外部状态</span>
+  <span>6 组异常场景</span>
 </div>
 
 ## 学习结果
@@ -22,17 +22,17 @@ description: 用状态一致性规则、轮次上限和运行超时，让不完�
 
 - 区分 `RunResult.final_output`、`new_items` 和 `raw_responses`；
 - 说明一次 SDK 运行正常返回为什么不等于领域任务已经完成；
-- 用 `completed`、`incomplete` 和 `failed` 表示调用方需要处理的三种结果；
+- 用 `completed`、`incomplete`、`failed`、`cancelled` 和 `timed_out` 表示调用方需要处理的五种结果；
 - 用确定性规则保证状态、答案、证据和错误相互一致；
 - 用 `max_turns` 限制模型调用轮次；
 - 用工具超时和运行级超时限制两种不同的等待；
 - 把 turn 上限、无效最终输出、工具失败和超时转换成稳定的机器可读结果；
-- 覆盖资料缺失、工具失败、超时和结果不完整四组场景。
+- 覆盖资料缺失、工具失败、模型失败、超时、取消和结果不完整六组场景。
 
 !!! abstract "本章边界"
 
-    本章给单次、非 streaming 运行增加状态和失败包装。它不增加 retry、session、handoff、
-    approval、持久化或通用异常框架。M04 再处理 trace、脱敏记录和 runner 边界替换。
+    本章给单次运行增加外部状态和失败包装。它不增加 retry、Session、持久化或通用异常
+    框架。M04 再处理 trace 与脱敏记录，M05 再把这些语义接到 streaming 与 SDK cancel。
 
 ## 核心内容
 
@@ -55,11 +55,11 @@ output = sdk_result.final_output_as(WorkerResult, raise_if_incorrect_type=True)
 ```
 
 `new_items` 适合回答“模型调用了哪个工具”和“工具返回了什么”。其中常见的类型包括
-`MessageOutputItem`、`ToolCallItem` 和 `ToolCallOutputItem`。不要让上层调用方分析这些
+`MessageOutputItem`、`ToolCallItem` 和 `ToolCallOutputItem`。不要让应用调用方分析这些
 items 或日志来猜任务状态；状态应直接写进 `WorkerResult`。
 
 未处理的异常不会返回一个完整 `RunResult`。`MaxTurnsExceeded`、`ModelBehaviorError` 和
-`ToolTimeoutError` 都继承 `AgentsException`。`v0.19.1` 会在这些异常的 `run_data` 中附上
+`ToolTimeoutError` 都继承 `AgentsException`。`v0.20.0` 会在这些异常的 `run_data` 中附上
 当时的 `new_items` 和 `raw_responses` 等快照，供诊断使用。这份快照不是经过领域检查的
 最终结果，不能直接当成成功输出。
 
@@ -76,13 +76,15 @@ items 或日志来猜任务状态；状态应直接写进 `WorkerResult`。
 schema 校验。应用还要比较 `TaskRequest.requested_source_ids` 与实际证据来源，并检查阻止
 完成的错误。
 
-本课程使用以下状态：
+本课程使用以下外部状态。它们是应用协议，不是 SDK 异常名称：
 
 | 状态 | 调用方可以相信什么 | 必须满足的规则 |
 | --- | --- | --- |
 | `completed` | 答案完整，可以继续使用 | 没有任何 `WorkerError`，请求的资料都已处理 |
 | `incomplete` | 返回内容可信，但只完成了一部分 | 至少有一个错误说明缺少什么；可以保留部分答案和证据 |
 | `failed` | 没有可安全使用的领域答案 | 至少有一个错误；答案和证据都为空 |
+| `cancelled` | 调用方明确终止了运行 | 使用稳定代码 `CANCELLED`；不得携带成功答案 |
+| `timed_out` | 工具或整次运行超过已公布的时间边界 | 使用 `TOOL_TIMEOUT` 或 `RUN_TIMEOUT`；不得冒充 `completed` |
 
 这里把 `WorkerError` 专门用于阻止任务完成的问题，不把普通提示也塞进 `errors`。这样
 `completed` 必须拥有空错误列表。以后若确实需要非阻塞提示，应另加 `warnings` 字段，
@@ -102,7 +104,9 @@ class SummaryError(BaseModel):
 
 
 class BoundedSummary(BaseModel):
-    status: Literal["completed", "incomplete", "failed"]
+    status: Literal[
+        "completed", "incomplete", "failed", "cancelled", "timed_out"
+    ]
     answer: str
     evidence: list[str]
     errors: list[SummaryError]
@@ -113,8 +117,10 @@ class BoundedSummary(BaseModel):
             raise ValueError("completed results cannot contain errors")
         if self.status != "completed" and not self.errors:
             raise ValueError("non-completed results must explain why")
-        if self.status == "failed" and (self.answer or self.evidence):
-            raise ValueError("failed results cannot contain domain output")
+        if self.status in {"failed", "cancelled", "timed_out"} and (
+            self.answer or self.evidence
+        ):
+            raise ValueError("terminal failures cannot contain domain output")
         return self
 ```
 
@@ -136,9 +142,9 @@ M02 已把异步查询工具设置为 2 秒，并选择
 `timeout_behavior="raise_exception"`。超时时 SDK 抛出 `ToolTimeoutError`，其中包含工具名
 和超时秒数。
 
-`Runner.run(..., max_turns=6)` 最多允许 6 次模型调用。`v0.19.1` 把一个 turn 定义为一次
+`Runner.run(..., max_turns=6)` 最多允许 6 次模型调用。`v0.20.0` 把一个 turn 定义为一次
 模型调用，包括这次模型输出引发的工具调用。`max_turns` 不能限制一次模型请求或工具调用
-各自等待多久，也不能代替总运行时间限制。不要传 `max_turns=None` 给这个有边界的 worker，
+各自等待多久，也不能代替总运行时间限制。不要传 `max_turns=None` 给这个有边界的用例，
 因为这会关闭 turn 上限。
 
 Python 3.12 的 `asyncio.timeout(...)` 可以包住整个 `Runner.run`：
@@ -165,13 +171,14 @@ async with asyncio.timeout(20.0):
 | --- | --- | --- |
 | 请求资料缺失，但已有可信部分结果 | `incomplete` | `SOURCE_MISSING` |
 | 超过 `max_turns`，没有完整最终结果 | `incomplete` | `MAX_TURNS` |
-| 异步工具超过自己的超时 | `failed` | `TOOL_TIMEOUT` |
-| 整次运行超过墙钟时间 | `failed` | `RUN_TIMEOUT` |
+| 异步工具超过自己的超时 | `timed_out` | `TOOL_TIMEOUT` |
+| 整次运行超过墙钟时间 | `timed_out` | `RUN_TIMEOUT` |
+| 调用方取消当前运行 | `cancelled` | `CANCELLED` |
 | 只读查询抛出应用定义的服务异常 | `failed` | `TOOL_FAILURE` |
 | 模型输出不符合 `output_type` | `failed` | `INVALID_FINAL_OUTPUT` |
 | 其他无法安全分类的异常 | `failed` | `UNEXPECTED_FAILURE` |
 
-`v0.19.1` 的 `Runner.run` 接受 `error_handlers`。`"max_turns"` 和
+`v0.20.0` 的 `Runner.run` 接受 `error_handlers`。`"max_turns"` 和
 `"invalid_final_output"` handler 可以返回一个受控的最终对象；SDK 会用同一个
 `output_type` 再校验它。handler 不会重新调用模型，也不会重放已经发生的工具调用。
 
@@ -179,8 +186,9 @@ async with asyncio.timeout(20.0):
 异常继续抛出，所以服务适配器应该先把预期的底层异常改成应用自己的
 `SourceQueryError`。这样包装层不会把 `TypeError` 等编程错误误标为普通工具故障。
 
-最后仍要保留一个通用异常出口，保证 JSON-in/JSON-out 边界可以返回机器可读失败。这个
-出口应在本地记录堆栈，但对外只返回固定代码和安全说明，不回传异常文本、路径或凭据。
+最后仍要保留一个通用异常出口，让应用用例可以返回机器可读失败。这个出口应在本地记录
+堆栈，但对外只返回固定代码和安全说明，不回传 SDK 异常文本、路径或凭据。SDK 和供应商
+可能修改异常措辞；异常字符串因此永远不是稳定协议。
 
 ### 5. 最小骨架：在一个地方收紧运行边界
 
@@ -247,15 +255,17 @@ async def run_bounded(
         )
         return check_domain_completion(output)
     except ToolTimeoutError:
-        return failed_result("TOOL_TIMEOUT")
+        return timed_out_result("TOOL_TIMEOUT")
     except TimeoutError:
-        return failed_result("RUN_TIMEOUT")
+        return timed_out_result("RUN_TIMEOUT")
+    except asyncio.CancelledError:
+        return cancelled_result("CANCELLED")
     except SourceQueryError:
         return failed_result("TOOL_FAILURE")
     except ModelBehaviorError:
         return failed_result("MODEL_BEHAVIOR")
     except Exception:
-        logger.exception("unexpected worker failure")
+        logger.exception("unexpected application run failure")
         return failed_result("UNEXPECTED_FAILURE")
 ```
 
@@ -270,12 +280,13 @@ async def run_bounded(
 ```text
 资料缺失   → status == "incomplete"，errors 中有 SOURCE_MISSING
 工具失败   → status == "failed"，errors 中有 TOOL_FAILURE
-工具或运行超时 → status == "failed"，错误代码分别稳定
+工具或运行超时 → status == "timed_out"，错误代码分别稳定
+主动取消     → status == "cancelled"，errors 中有 CANCELLED
 结果不完整 → status == "incomplete"，保留的答案和证据仍符合结果模型的一致性规则
 ```
 
-另外检查 Pydantic 会拒绝这三种对象：`completed` 加错误、`failed` 加答案、非完成状态没有
-错误。`max_turns` 和无效最终输出也要分别触发对应 handler。测试可以在调用点替换
+另外检查 Pydantic 会拒绝这三类对象：`completed` 加错误、失败/取消/超时加领域答案、
+非完成状态没有错误。`max_turns` 和无效最终输出也要分别触发对应 handler。测试可以在调用点替换
 `Runner.run`，但本章不建立通用 runner 抽象；M04 会用依赖注入整理这个边界。
 
 只有断言失败时，才查看异常的 `run_data`、`new_items` 或本地日志，定位模型在哪一轮调用
@@ -290,13 +301,13 @@ async def run_bounded(
 1. `final_output`、`new_items` 和 `raw_responses` 分别回答什么问题？
 2. 为什么 `final_output_as(..., raise_if_incorrect_type=True)` 不能证明任务已经完成？
 3. 判断正误：只要 `Runner.run` 没有抛异常，状态就应是 `completed`。
-4. `incomplete` 与 `failed` 的主要区别是什么？
+4. `incomplete` 与 `failed`、`cancelled`、`timed_out` 的主要区别是什么？
 5. 为什么本章要求 `completed` 的 `errors` 为空？
 6. `max_turns=6` 限制的是模型调用、工具调用次数，还是墙钟时间？
 7. 工具超时和运行级超时分别保护哪一层？
 8. `invalid_final_output` handler 返回对象后，SDK 还会做什么？它会重新调用模型吗？
 9. 为什么不能把所有 `ModelBehaviorError` 都标成 `INVALID_FINAL_OUTPUT`？
-10. 为什么异常路径测试应先断言 `WorkerResult`，而不是匹配日志文本？
+10. 为什么异常路径测试应先断言 `WorkerResult`，而不是匹配 SDK 异常文本或日志文本？
 
 <details class="exercise-answers">
 <summary>参考答案</summary>
@@ -306,7 +317,8 @@ async def run_bounded(
 2. 这个 helper 只检查 Python 运行时类型。应用仍要检查请求资料是否被覆盖、状态与错误
    是否一致，以及证据是否足以支持答案。
 3. 错。资料缺失时，SDK 可以正常返回一个经过 schema 校验的 `incomplete` 结果。
-4. `incomplete` 含有可信的部分答案或证据；`failed` 没有可安全使用的领域输出。
+4. `incomplete` 含有可信的部分答案或证据；其余三个状态没有可交付的成功答案，并分别
+   表示失败、调用方取消和超过时间边界。
 5. 本章把 `WorkerError` 定义为阻止完成的问题。若还有这类错误，任务就不能声称完成。
 6. 它最多允许 6 次模型调用；一个 turn 包含该次模型输出引发的工具调用。它没有单独限制
    每轮工具调用数，也不限制墙钟时间。
@@ -326,19 +338,20 @@ async def run_bounded(
 `src/evidence_worker/contracts.py`，并新增运行包装和测试文件；不要把上面的讲解模型直接
 改名当作完整答案。
 
-1. 给 `WorkerResult` 增加必填的 `status`，只允许 `completed`、`incomplete`、`failed`；
+1. 给 `WorkerResult` 增加必填的 `status`，只允许 `completed`、`incomplete`、`failed`、
+   `cancelled`、`timed_out`；
 2. 规定 `errors` 中每一项都表示阻止完成的问题，并加入确定性校验：`completed` 没有
-   error，`incomplete` 和 `failed` 至少有一个 error，`failed` 没有答案或证据；
+   error，所有非完成状态至少有一个 error，失败、取消和超时没有答案或证据；
 3. 应用比较请求的资料标识与返回的 evidence；缺少资料时返回 `incomplete` 和
    `SOURCE_MISSING`，不能相信模型给出的 `completed`；
 4. 调用 `Runner.run` 时设置 `max_turns=6`，并用 error handler 把 turn 上限转换为
    `incomplete`、把无效最终输出转换为 `failed`；
 5. 用 `asyncio.timeout(20.0)` 包住整次运行；保持 M02 查询工具的 2 秒单次超时；
 6. 把预期的只读查询异常转换成应用自己的异常类型，再在包装层返回 `TOOL_FAILURE`；
-7. 分别处理 `ToolTimeoutError`、运行级 `TimeoutError`、其他 `ModelBehaviorError` 和最后的
-   未知异常；对外只返回稳定代码和安全说明；
-8. 不调用真实模型，覆盖四组场景：资料缺失、工具失败、超时和有效但不完整的结果；超时
-   组要分别断言 `TOOL_TIMEOUT` 与 `RUN_TIMEOUT`；
+7. 分别处理 `ToolTimeoutError`、运行级 `TimeoutError`、`asyncio.CancelledError`、其他
+   `ModelBehaviorError` 和最后的未知异常；对外只返回稳定代码和安全说明；
+8. 不调用真实模型，覆盖六组场景：资料缺失、工具失败、模型失败、超时、取消和有效但
+   不完整的结果；超时组要分别断言 `TOOL_TIMEOUT` 与 `RUN_TIMEOUT`；
 9. 另外覆盖 `MAX_TURNS`、`INVALID_FINAL_OUTPUT` 和三条状态一致性规则；
 10. 让每个结果都能直接 `model_dump_json()`；调用方不解析日志、异常文本或 `new_items`
     就能决定下一步。
@@ -354,31 +367,31 @@ uv run pytest
 
 完成标准：
 
-- 资料缺失、工具失败、超时和结果不完整四组场景都有稳定、可断言的 `WorkerResult`；
+- 资料缺失、工具失败、模型失败、超时、取消和结果不完整都有稳定、可断言的 `WorkerResult`；
 - `completed` 不可能同时包含阻止任务完成的错误；
 - 工具 2 秒超时、运行 20 秒超时和 6 turn 上限分别生效；
 - 无效最终输出和其他模型行为错误使用不同代码；
-- 上层调用方只读 `status` 和 `errors` 就能判断任务是否完成；
+- 应用调用方只读 `status` 和 `errors` 就能区分完成、不完整、失败、取消和超时；
 - 测试不需要 API key，完整仓库检查全部通过。
 
 本章不提供实战完整实现。核心内容给出了状态不变量和异常包装的连接方式；你仍需把它们
 应用到自己的 `TaskRequest`、`WorkerResult`、资料覆盖检查、错误构造函数和测试场景中。
 
-## 参考
+## 版本与官方参考
 
-本章最后核对日期：2026-08-02。项目锁定版本：`openai-agents==0.19.1`。
+本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
 
 - [当前 Agents SDK 指南：整体定位](https://developers.openai.com/api/docs/guides/agents)
-- [`v0.19.1` Running agents：agent loop、turn 上限与错误](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
-- [`v0.19.1` Results：final output 与 new items](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md)
-- [`v0.19.1` Runner 与 turn 上限源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run.py)
-- [`v0.19.1` SDK 异常源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/exceptions.py)
-- [`v0.19.1` run error handler 源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run_error_handlers.py)
-- [`v0.19.1` 结构化输出校验源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/agent_output.py)
-- [`v0.19.1` 函数工具超时源码](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/tool.py)
-- [`v0.19.1` Agent lifecycle 示例](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/agent_lifecycle_example.py)
+- [`v0.20.0` Running agents：agent loop、turn 上限与错误](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/running_agents.md)
+- [`v0.20.0` Results：final output 与 new items](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/results.md)
+- [`v0.20.0` Runner 与 turn 上限源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run.py)
+- [`v0.20.0` SDK 异常源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/exceptions.py)
+- [`v0.20.0` run error handler 源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run_error_handlers.py)
+- [`v0.20.0` 结构化输出校验源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/agent_output.py)
+- [`v0.20.0` 函数工具超时源码](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/tool.py)
+- [`v0.20.0` Agent lifecycle 示例](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/agent_lifecycle_example.py)
 - [Python 3.12 `asyncio.timeout`](https://docs.python.org/3.12/library/asyncio-task.html#asyncio.timeout)
 
 示例改动：从官方基础运行文档和 lifecycle 示例中保留单次异步 `Runner.run`；加入课程自己的
-三状态规则、6 turn 上限、20 秒运行级超时、稳定错误代码和受控 error handlers；移除
+五状态规则、6 turn 上限、20 秒运行级超时、稳定错误代码和受控 error handlers；移除
 随机工具、handoff、hooks、交互输入、session、streaming、retry 和实战完整答案。

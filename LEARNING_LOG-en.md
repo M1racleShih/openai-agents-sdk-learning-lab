@@ -9,13 +9,15 @@ minute.
 
 | Module | Status | Completed | Verification evidence |
 | --- | --- | --- | --- |
-| M00: First traceable Agent | in_progress | — | — |
+| M00: First observable Agent | in_progress | — | — |
 | M01: Structured results and context | pending | — | — |
-| M02: Read-only function tools | pending | — | — |
+| M02: Read-only tools and source boundaries | pending | — | — |
 | M03: Bounded runs and truthful failures | pending | — | — |
-| M04: Redacted observation and deterministic tests | pending | — | — |
-| M05: JSON-in/JSON-out worker | pending | — | — |
-| M06: Target-project readiness review | pending | — | — |
+| M04: Traces, minimal metadata, and deterministic tests | pending | — | — |
+| M05: Sessions, streaming, and cancellation | pending | — | — |
+| M06: UI-independent use case and typed events | pending | — | — |
+| M07: Thin terminal adapter | pending | — | — |
+| M08: Public capstone and readiness review | pending | — | — |
 
 Only `pending`, `ready`, `in_progress`, and `passed` are valid status values.
 

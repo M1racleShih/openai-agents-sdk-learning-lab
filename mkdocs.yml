@@ -1,5 +1,5 @@
 site_name: Agents SDK Learning Lab
-site_description: Build a bounded, read-only evidence worker with the OpenAI Agents SDK.
+site_description: Build a single-Agent, read-only streaming terminal application with the OpenAI Agents SDK.
 site_url: https://m1racleshih.github.io/openai-agents-sdk-learning-lab/
 repo_url: https://github.com/M1racleShih/openai-agents-sdk-learning-lab
 repo_name: M1racleShih/openai-agents-sdk-learning-lab
@@ -12,13 +12,15 @@ strict: true
 nav:
   - 课程首页: index.md
   - 教材站使用说明: site-guide.md
-  - M00 · 第一次运行 Agent: lessons/m00-first-agent.md
+  - M00 · 首个可观察 Agent: lessons/m00-first-agent.md
   - M01 · 结构化结果与上下文: lessons/m01-structured-results-and-context.md
   - M02 · 有边界的只读工具: lessons/m02-read-only-tools.md
   - M03 · 有界运行与真实失败: lessons/m03-bounded-runs-and-failures.md
   - M04 · 脱敏追踪与确定性测试: lessons/m04-tracing-and-testing.md
-  - M05 · JSON 证据工作器: lessons/m05-json-evidence-worker.md
-  - M06 · 目标项目就绪评审: lessons/m06-readiness-review.md
+  - M05 · Sessions、streaming 与取消: lessons/m05-sessions-streaming-and-cancellation.md
+  - M06 · UI 无关的应用用例与类型化事件: lessons/m06-application-use-case-and-events.md
+  - M07 · 薄终端适配器: lessons/m07-thin-terminal-adapter.md
+  - M08 · 公开 capstone 与就绪评审: lessons/m08-capstone-readiness-review.md
 
 theme:
   name: material
@@ -66,13 +68,15 @@ plugins:
           nav_translations:
             课程首页: Course home
             教材站使用说明: Lesson site guide
-            M00 · 第一次运行 Agent: M00 · Run your first Agent
+            M00 · 首个可观察 Agent: M00 · First observable Agent
             M01 · 结构化结果与上下文: M01 · Structured results and context
             M02 · 有边界的只读工具: M02 · Bounded read-only tools
             M03 · 有界运行与真实失败: M03 · Bounded runs and truthful failures
             M04 · 脱敏追踪与确定性测试: M04 · Redacted tracing and deterministic tests
-            M05 · JSON 证据工作器: M05 · JSON evidence worker
-            M06 · 目标项目就绪评审: M06 · Target-project readiness review
+            M05 · Sessions、streaming 与取消: M05 · Sessions, streaming, and cancellation
+            M06 · UI 无关的应用用例与类型化事件: M06 · UI-independent application use case and typed events
+            M07 · 薄终端适配器: M07 · Thin terminal adapter
+            M08 · 公开 capstone 与就绪评审: M08 · Public capstone and readiness review
 
 markdown_extensions:
   - abbr
@@ -108,4 +112,4 @@ extra_javascript:
 extra:
   generator: false
 
-copyright: OpenAI Agents SDK Learning Lab · SDK v0.19.1 · MIT License
+copyright: OpenAI Agents SDK Learning Lab · SDK v0.20.0 · MIT License
