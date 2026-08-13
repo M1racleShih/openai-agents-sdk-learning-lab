@@ -10,7 +10,7 @@ description: Define tasks and results with Pydantic, then separate model input f
 <p class="lesson-deck">Give downstream code a validated object while keeping local dependencies outside the model.</p>
 
 <div class="lesson-meta" aria-label="Lesson information">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>9 review questions</span>
   <span>1 structured run</span>
   <span>1 context boundary check</span>
@@ -21,12 +21,13 @@ description: Define tasks and results with Pydantic, then separate model input f
 After this chapter, you should be able to:
 
 - use Pydantic to define the `TaskRequest` received by the application and the `WorkerResult`
-  returned by the worker;
+  returned by the application use case;
 - explain how `output_type` makes `final_output` a validated object;
 - convert a `WorkerResult` directly to JSON without parsing model-generated prose;
 - distinguish model-visible input from a local `RunContextWrapper`;
 - keep dependencies such as a logger, allowed source root, and clients in local code;
 - explain how application code could still expose local context to the model;
+- distinguish the final structured run result from the user-visible streamed answer;
 - complete one single-Agent run that returns a `WorkerResult`.
 
 !!! note "Before you start"
@@ -39,7 +40,8 @@ After this chapter, you should be able to:
 
     This chapter covers input, output, and context boundaries on the successful path only. It does
     not add tools or define timeout, incomplete, or failed run semantics. M02 and M03 cover those
-    topics.
+    topics. It identifies the structured-result/streamed-answer tension without solving the full
+    dual channel; M05 runs a compatibility spike against the locked version and target model.
 
 ## Core material
 
@@ -105,7 +107,7 @@ model that declares field types, validates values automatically, and generates J
 Pydantic is a separate library, not part of the Agents SDK. This chapter uses it to validate
 application input and let the Agents SDK describe structured Agent output.
 
-The final evidence worker will gradually gain four models:
+The final application use case will gradually gain four models:
 
 - `TaskRequest`: the task ID, question, and source IDs the task may query;
 - `Evidence`: one curated piece of evidence and its source ID;
@@ -131,7 +133,7 @@ iterate over `result.evidence` instead of guessing source IDs from a “Sources:
 the same way; substitute your own model where appropriate.
 
 An Agent returns text by default. When you pass a Pydantic model to `output_type`, the SDK derives
-a JSON schema and asks the model for structured output. `v0.19.1` uses a strict schema by default.
+a JSON schema and asks the model for structured output. `v0.20.0` uses a strict schema by default.
 Strict mode rejects extra fields outside the schema and loose type coercion, making output more
 predictable. The SDK then validates and parses the JSON produced by the model.
 
@@ -155,9 +157,9 @@ agent = Agent(
 
 After a successful run, `result.final_output` is a `SummaryResult`, not a JSON string that needs
 another parsing step. Its runtime value in this single-Agent run is a `SummaryResult`, but the
-static type of `RunResult.final_output` is `Any` because the SDK cannot guarantee that globally; a
-later handoff could let an Agent with a different output type finish the run. When this chapter has
-only one known Agent, check and obtain the expected type explicitly:
+general `RunResult.final_output` type is `Any` because the SDK cannot statically guarantee every
+run configuration. With one known Agent in this chapter, check and obtain the expected type
+explicitly:
 
 ```python
 output = result.final_output_as(SummaryResult, raise_if_incorrect_type=True)
@@ -180,7 +182,27 @@ exceptional paths in one place.
     output for the selected API. If structured output is unsupported, this chapter's run will
     fail. That is expected; do not fall back to prose.
 
-### 4. Model context and local context are different data
+### 4. A structured final result and a streamed answer are separate interfaces
+
+The application ultimately needs a machine-readable `WorkerResult`, while a user expects readable
+natural language to appear during the run. These requirements differ in timing and shape:
+
+| Interface | Consumer | Available | Required shape |
+| --- | --- | --- | --- |
+| Structured run result | Application code | After the run fully settles and validates | Stable fields, status, evidence, and errors |
+| Streamed user answer | Terminal or another UI | While the run is active | Directly readable natural-language deltas |
+
+Once `output_type` is set, the model must ultimately produce structured JSON. Do not assume that
+raw text deltas remain display-ready prose; they may be serialized JSON fragments. Do not build a
+partial JSON parser in the UI either, because field order, escaping, and chunk boundaries are not
+a stable protocol.
+
+M01 only establishes the problem. M05 records the actual event shape with
+`openai-agents==0.20.0` and the explicit target model, then chooses a minimum dual channel with one
+Agent, one Runner run, and no model call outside that Agent loop. Until that spike is complete, do not
+display structured deltas or implement a partial JSON parser.
+
+### 5. Model context and local context are different data
 
 ```mermaid
 flowchart TB
@@ -228,7 +250,7 @@ the run.
     credential in its result. Return only the data needed for the task. Never return a logger,
     client, or credential.
 
-### 5. Minimal example: use structured output and keep dependencies local
+### 6. Minimal example: use structured output and keep dependencies local
 
 This example combines the two ideas. `SummaryResult` becomes the model output schema, while
 `AppContext` remains available only to local Python code. The dynamic instructions can read the
@@ -349,7 +371,7 @@ Answer the questions before expanding the reference answers.
 
 </details>
 
-### Lab: establish the worker's first data models
+### Lab: establish the application use case's first data models
 
 Define these Pydantic models in the model-definition module at
 `src/evidence_worker/contracts.py`:
@@ -419,19 +441,19 @@ four data models.
 | `output_type` | Tells the SDK which type should constrain the final output | §3 |
 | `final_output_as` | Casts `final_output` to a static type; with `raise_if_incorrect_type=True`, also checks the runtime type | §3 |
 | Strict schema | Rejects extra fields and loose type coercion for more predictable structured output | §3 |
-| `RunContextWrapper[T]` | The SDK wrapper around local context, available only to local Python code | §4 |
-| context | The local object passed to `Runner.run(..., context=...)`; the model does not see it automatically | §4 |
+| `RunContextWrapper[T]` | The SDK wrapper around local context, available only to local Python code | §5 |
+| context | The local object passed to `Runner.run(..., context=...)`; the model does not see it automatically | §5 |
 
-## References
+## Version and official references
 
-Last checked: 2026-08-01. Locked project version: `openai-agents==0.19.1`.
+Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
 
-- [`v0.19.1` Agent definitions: output types](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/agents.md#output-types)
-- [`v0.19.1` Context management](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/context.md)
-- [`v0.19.1` Results: final output](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md#final-output)
-- [`v0.19.1` dynamic instructions example](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/dynamic_system_prompt.py)
-- [`v0.19.1` Agent output schema source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/agent_output.py)
-- [`v0.19.1` Run context source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run_context.py)
+- [`v0.20.0` Agent definitions: output types](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/agents.md#output-types)
+- [`v0.20.0` Context management](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/context.md)
+- [`v0.20.0` Results: final output](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/results.md#final-output)
+- [`v0.20.0` dynamic instructions example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/dynamic_system_prompt.py)
+- [`v0.20.0` Agent output schema source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/agent_output.py)
+- [`v0.20.0` Run context source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run_context.py)
 
 Changes to the examples: combine the official output type and dynamic instructions examples into
 one single-Agent summary task; use the project's existing explicit model loader; add a logger and

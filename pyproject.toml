@@ -1,11 +1,13 @@
 [project]
 name = "openai-agents-sdk-learning-lab"
 version = "0.1.0"
-description = "A focused learning lab for bounded read-only workers built with the OpenAI Agents SDK."
+description = "A focused learning lab for a single-Agent, read-only terminal application."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "openai-agents==0.19.1",
+    "openai-agents==0.20.0",
+    "prompt-toolkit==3.0.53",
+    "rich==15.0.0",
 ]
 
 [dependency-groups]
@@ -30,7 +32,10 @@ pythonVersion = "3.12"
 typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not smoke'"
+markers = [
+    "smoke: makes a real model API call and must be selected explicitly",
+]
 testpaths = ["tests"]
 
 [tool.ruff]

@@ -1,16 +1,16 @@
 ---
-title: M00 · 第一次运行 Agent
+title: M00 · 首个可观察 Agent
 description: 理解 Agent、Runner.run、RunResult 与 trace，并完成第一次真实运行。
 ---
 
 <p class="lesson-kicker">M00 · 45 分钟 · 概念 + 实战</p>
 
-# 第一次运行 Agent
+# 首个可观察 Agent
 
 <p class="lesson-deck">先看清一次 Agent 运行的最小结构，再写第一段真实代码。</p>
 
 <div class="lesson-meta" aria-label="课程信息">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>9 道巩固题</span>
   <span>1 次模型运行</span>
   <span>1 次 trace 检查</span>
@@ -29,10 +29,12 @@ description: 理解 Agent、Runner.run、RunResult 与 trace，并完成第一�
 - 在 Trace viewer 中找到这次运行和其中的模型调用；
 - 说明 tracing 的用途，以及它为什么不等于对话记忆；
 - 说清 SDK 管理了什么，以及应用代码仍然必须管理什么。
+- 说明最终应用只有一个 Agents SDK Agent runtime。
 
 !!! abstract "本章边界"
 
-    本章只学习最小运行路径，不使用工具、handoff、session、streaming 或结构化输出。
+    本章只学习最小运行路径，不使用工具、Session、streaming 或结构化输出。课程最终仍然
+    只有这一个 SDK Agent runtime；handoff 和多 Agent 不在学习范围内。
 
 ## 核心内容
 
@@ -49,8 +51,6 @@ flowchart TD
     B -->|"请求工具"| C["执行应用注册的工具"]
     C --> D["把工具结果交回模型"]
     D --> A
-    B -->|"请求 handoff"| E["切换到目标 Agent"]
-    E --> A
     B -->|"最终结果且没有待处理的工具"| F(["返回 RunResult"])
 ```
 
@@ -61,7 +61,7 @@ flowchart TD
 | --- | --- |
 | 应用自己调用模型并处理后续步骤 | `Runner` 调用模型并推进循环 |
 | 应用自己决定何时再次调用模型 | `Runner` 根据模型输出继续或停止 |
-| 适合需要完全自定义循环的功能 | 适合工具调用、handoff 和 guardrail 等重复流程 |
+| 适合需要完全自定义循环的功能 | 适合重复的模型与工具编排流程 |
 
 无论选择哪种方式，应用仍然负责工具实现、权限、凭据、超时、数据保存和业务状态。
 
@@ -105,7 +105,7 @@ print(result.final_output)
 `Runner.run` 是异步接口，所以要在 `async` 函数中使用 `await`。普通 Python 脚本可以
 用 `asyncio.run(...)` 启动这个函数。
 
-一次 `Runner.run` 不等于一次模型调用。没有工具和 handoff 时，模型通常一次就能
+一次 `Runner.run` 不等于一次模型调用。没有工具时，模型通常一次就能
 给出最终结果：
 
 ```text
@@ -136,7 +136,7 @@ SDK 只会使用应用交给 Agent 的能力。应用必须决定：
 - 运行多久算超时；
 - 怎样表示完成、不完整和失败；
 - 保存哪些输入、输出和运行记录；
-- 怎样把结果交给上层程序或最终用户。
+- 怎样把结果交给应用用例或最终用户。
 
 !!! tip "记住"
 
@@ -145,7 +145,7 @@ SDK 只会使用应用交给 Agent 的能力。应用必须决定：
 ### 5. trace 记录一次运行经过了哪些步骤
 
 Tracing 的首要用途不是保存另一份对话，而是让开发者看清最终结果经过了哪些步骤。
-回答错误时，可以用 trace 判断问题出在模型、工具、handoff、guardrail，还是普通业务
+回答错误时，可以用 trace 判断问题出在模型、工具、guardrail，还是普通应用
 代码。有代表性的 trace 还可以成为后续 eval 的案例。Trace 提供检查依据，但不会让
 下一次运行记住对话，也不会自动判断答案是否正确。
 
@@ -160,9 +160,9 @@ Tracing 的首要用途不是保存另一份对话，而是让开发者看清最
 ```
 
 在常规服务端配置中，Agents SDK 默认启用 tracing，并把记录发送到
-[OpenAI Traces dashboard](https://platform.openai.com/traces)。`v0.19.1` 默认会记录
+[OpenAI Traces dashboard](https://platform.openai.com/traces)。`v0.20.0` 默认会记录
 整次运行、Runner 调用、模型轮次、Agent 执行和模型生成。使用工具、guardrail 或
-handoff 时，还会记录相应步骤。
+guardrail 时，还会记录相应步骤。
 
 M00 没有这些额外能力。完成真实运行后，只需确认：
 
@@ -184,7 +184,7 @@ Trace viewer 的名称和层级可能变化，所以不要求界面与教材截�
 ## 示例
 
 下面的例子改写自官方
-[`examples/basic/hello_world.py`](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/hello_world.py)。
+[`examples/basic/hello_world.py`](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py)。
 它保留单 Agent、一次运行和读取最终结果的最小结构，并改用本项目现有的
 `load_learning_model()`，避免依赖 SDK 默认模型。
 
@@ -246,7 +246,7 @@ if __name__ == "__main__":
 4. SDK 只负责使用已注册能力，不会替应用决定工具能访问什么数据、能执行什么操作。
 5. 从 `Runner.run` 返回的 `RunResult` 中读取 `result.final_output`。
 6. `await Runner.run(...)` 第一次可能调用模型。加载配置和创建 `Agent` 都不会调用模型。
-7. 错。工具调用或 handoff 都可能让同一次运行包含多次模型调用。
+7. 错。工具调用可能让同一次运行包含多次模型调用。
 8. 错。复用 `Agent` 只会复用配置；多轮对话必须显式续接状态。
 9. 不会。Trace 用来检查一次运行实际经过了哪些步骤，帮助定位错误、分析耗时，并为
    后续 eval 提供有代表性的案例。
@@ -307,15 +307,15 @@ uv run python -m evidence_worker.first_agent
 这里不提供实战题的完整代码。上面的示例已经展示所需结构，剩下的工作是根据任务
 要求完成改写并实际运行。
 
-## 参考
+## 版本与官方参考
 
-本章最后核对日期：2026-07-31。项目锁定版本：`openai-agents==0.19.1`。
+本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
 
 - [OpenAI Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
-- [`v0.19.1` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/quickstart.md)
-- [`v0.19.1` Running agents](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
-- [`v0.19.1` Tracing](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
-- [`v0.19.1` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/hello_world.py)
+- [`v0.20.0` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/quickstart.md)
+- [`v0.20.0` Running agents](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/running_agents.md)
+- [`v0.20.0` Tracing](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
+- [`v0.20.0` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py)
 
-示例改动：增加项目现有的显式模型加载器，调整 Agent 名称和问题，省略工具、handoff、
-session、streaming 以及其他不属于 M00 的功能。
+示例改动：增加项目现有的显式模型加载器，调整 Agent 名称和问题，省略工具、Session、
+streaming 以及其他不属于 M00 的功能。

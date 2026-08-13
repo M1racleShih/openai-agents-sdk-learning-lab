@@ -1,16 +1,16 @@
 ---
-title: M00 · Run your first Agent
+title: M00 · First observable Agent
 description: Understand Agent, Runner.run, RunResult, and traces, then complete one real run.
 ---
 
 <p class="lesson-kicker">M00 · 45 minutes · concepts + lab</p>
 
-# Run your first Agent
+# First observable Agent
 
 <p class="lesson-deck">See the smallest complete Agent run before writing your first real program.</p>
 
 <div class="lesson-meta" aria-label="Lesson information">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>9 review questions</span>
   <span>1 model run</span>
   <span>1 trace check</span>
@@ -29,11 +29,13 @@ After this chapter, you should be able to:
 - find that run and its model call in the Trace viewer;
 - explain what tracing is for and why it is not conversation memory;
 - explain what the SDK manages and what the application must still manage.
+- explain why the final application has exactly one Agents SDK Agent runtime.
 
 !!! abstract "Chapter boundary"
 
-    This chapter covers only the smallest run path. It does not use tools, handoffs, sessions,
-    streaming, or structured output.
+    This chapter covers only the smallest run path; tools, sessions, streaming, and structured
+    output arrive later. The course keeps this one SDK Agent runtime; handoffs and multiple
+    Agents are outside the learning scope.
 
 ## Core material
 
@@ -51,8 +53,6 @@ flowchart TD
     B -->|"Tool request"| C["Run an application-registered tool"]
     C --> D["Return the tool result to the model"]
     D --> A
-    B -->|"Handoff request"| E["Switch to the target Agent"]
-    E --> A
     B -->|"Final result with no pending tool work"| F(["Return RunResult"])
 ```
 
@@ -63,7 +63,7 @@ The real difference is whether your application writes and maintains the loop ab
 | --- | --- |
 | The application calls the model and handles each next step | `Runner` calls the model and advances the loop |
 | The application decides when to call the model again | `Runner` continues or stops based on model output |
-| Best when the loop must be fully custom | Best for repeated tool, handoff, and guardrail flows |
+| Best when the loop must be fully custom | Best for repeated model and tool orchestration |
 
 In both cases, the application still owns tool implementations, permissions, credentials,
 timeouts, data storage, and business status.
@@ -110,7 +110,7 @@ print(result.final_output)
 `Runner.run` is asynchronous, so call it with `await` inside an `async` function. A normal Python
 script can use `asyncio.run(...)` to start that function.
 
-One `Runner.run` is not the same as one model call. With no tools or handoffs, one model call is
+One `Runner.run` is not the same as one model call. With no tools, one model call is
 usually enough:
 
 ```text
@@ -152,7 +152,7 @@ decide:
 
 Tracing is not another copy of the conversation. Its primary purpose is to show the steps that led
 to the final result. When an answer is wrong, a trace can reveal whether the problem began in the
-model, a tool, a handoff, a guardrail, or ordinary application code. Representative traces can also
+model, a tool, a guardrail, or ordinary application code. Representative traces can also
 become cases for later evals. A trace provides evidence to inspect; it does not make the next run
 remember the conversation or decide whether an answer is correct.
 
@@ -167,9 +167,9 @@ one workflow: trace
 ```
 
 In the normal server-side setup, the Agents SDK enables tracing by default and sends records to the
-[OpenAI Traces dashboard](https://platform.openai.com/traces). In `v0.19.1`, the default trace
+[OpenAI Traces dashboard](https://platform.openai.com/traces). In `v0.20.0`, the default trace
 records the overall run, Runner invocation, model turn, Agent execution, and model generation. When
-tools, guardrails, or handoffs are used, it records those steps too.
+tools or guardrails are used, it records those steps too.
 
 M00 does not use those additional capabilities. After a real run, confirm only that:
 
@@ -192,7 +192,7 @@ call exercise, but you have not yet passed the M00 trace check.
 ## Example
 
 The example below is adapted from the official
-[`examples/basic/hello_world.py`](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/hello_world.py).
+[`examples/basic/hello_world.py`](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py).
 It keeps the smallest structure—one Agent, one run, and the final result—and uses this project's
 existing `load_learning_model()` instead of an SDK default model.
 
@@ -258,7 +258,7 @@ Answer the questions before expanding the reference answers.
 5. Read `result.final_output` from the `RunResult` returned by `Runner.run`.
 6. `await Runner.run(...)` is the first step that may call the model. Loading configuration and
    creating the `Agent` do not call it.
-7. False. Tool calls or handoffs can cause the same run to contain several model calls.
+7. False. Tool calls can cause the same run to contain several model calls.
 8. False. Reusing an `Agent` reuses its configuration only; multi-turn conversation state must be
    continued explicitly.
 9. No. A trace shows the steps that actually occurred in one run, helping developers locate errors,
@@ -321,15 +321,15 @@ Completion criteria:
 This lesson does not provide the complete lab implementation. The example above shows the required
 shape; your task is to adapt it to the requirements and run it.
 
-## References
+## Version and official references
 
-Last checked: 2026-07-31. Locked project version: `openai-agents==0.19.1`.
+Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
 
 - [OpenAI Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
-- [`v0.19.1` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/quickstart.md)
-- [`v0.19.1` Running agents](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
-- [`v0.19.1` Tracing](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
-- [`v0.19.1` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/hello_world.py)
+- [`v0.20.0` Quickstart](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/quickstart.md)
+- [`v0.20.0` Running agents](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/running_agents.md)
+- [`v0.20.0` Tracing](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
+- [`v0.20.0` hello-world example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/hello_world.py)
 
 Changes to the example: use the project's existing explicit model loader, change the Agent name
-and question, and omit tools, handoffs, sessions, streaming, and other features outside M00.
+and question, and omit tools, sessions, streaming, and other features outside M00.

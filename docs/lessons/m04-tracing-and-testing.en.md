@@ -3,14 +3,14 @@ title: M04 · Redacted tracing and deterministic tests
 description: Use stable trace identifiers, minimal local records, and a replaceable runner boundary to inspect run paths while preventing default tests from calling a real model.
 ---
 
-<p class="lesson-kicker">M04 · 75 minutes · concepts + lab</p>
+<p class="lesson-kicker">M04 · 60 minutes · concepts + lab</p>
 
 # Redacted tracing and deterministic tests
 
 <p class="lesson-deck">Keep enough evidence to explain a run without copying raw private content into traces, test output, or local records.</p>
 
 <div class="lesson-meta" aria-label="Lesson information">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>10 review questions</span>
   <span>3 test layers</span>
   <span>1 real smoke run</span>
@@ -26,7 +26,8 @@ After this chapter, you should be able to:
 - explain the default behavior and risk of `trace_include_sensitive_data`;
 - disable trace capture of model inputs and outputs and function-tool inputs and outputs while
   keeping the span structure;
-- save a local record containing only status, evidence references, error codes, and a run ID;
+- save a local record containing only application session/run IDs, the trace ID, provenance,
+  tool-phase classifications, completion, evidence references, and error codes;
 - replace the `Runner.run` boundary through dependency injection and write deterministic tests
   that do not call a real model;
 - explain what unit tests, deterministic integration tests, and a real-model smoke test each
@@ -35,10 +36,10 @@ After this chapter, you should be able to:
 
 !!! abstract "Chapter boundary"
 
-    This chapter adds observation and test boundaries to the single-run, read-only worker from
-    M03. It does not add custom trace processors, a complete eval platform, sessions, handoffs,
-    streaming, or a production logging system. It also does not store raw prompts, tool arguments,
-    tool outputs, or complete answers.
+    This chapter adds observation and test boundaries to the single-run, read-only path from M03.
+    It does not add custom trace processors, a complete eval platform, an SDK Session
+    implementation, streaming, or a production logging system. It also does not store raw
+    prompts, tool arguments, tool outputs, or complete answers.
 
 ## Core material
 
@@ -47,7 +48,7 @@ After this chapter, you should be able to:
 `Runner.run(...)` creates a trace by default and records several spans within the run. A trace is
 one workflow from start to finish. A span is one step with a start and end time.
 
-The main layers recorded by `v0.19.1` are:
+The main layers recorded by `v0.20.0` are:
 
 ```text
 one Runner.run: trace
@@ -74,24 +75,39 @@ Troubleshooting therefore joins two kinds of evidence. Use the local record to f
 inspect the path in the trace, and then use the result status and consistency rules to decide whether
 the caller may use the returned content.
 
-### 2. Three identifiers answer three different questions
+### 2. Session, run, and trace identifiers are different state spaces
 
-`RunConfig` provides three fields for correlating runs:
+The application owns two identifiers first; SDK tracing owns another. M05 adds an SDK Session
+identifier for conversation storage. Do not collapse them into one “session ID”:
+
+| Identifier | Lifetime | Question it answers |
+| --- | --- | --- |
+| application session ID | Several turns in one user conversation | Which application turns belong to one continuous interaction? |
+| application run ID | Unique for every `Submit` | Which command, event sequence, and `RunOutcome` belong to this execution? |
+| SDK Session ID | M05 conversation-history storage key | Which history container does the SDK read and update? |
+| trace ID | One trace for one SDK run | Which model-and-tool path should the Trace viewer open? |
+
+An application session ID may be an input to the SDK Session factory, but the concepts remain
+separate: the former is an application correlation key, while the latter belongs to a replaceable
+history implementation. The application creates its run ID; `trace_id` must satisfy the SDK
+format. One application session can contain several runs, each with its own trace.
+
+`RunConfig` also provides three trace-correlation fields:
 
 | Field | Purpose | Rule in this chapter |
 | --- | --- | --- |
 | `workflow_name` | Display one kind of workflow under one logical name | Use a fixed constant; do not append user input |
 | `trace_id` | Uniquely identify one trace | Generate it with `gen_trace_id()` before every run and save it in the minimal record |
-| `group_id` | Link several traces from the same request or process | Use an opaque identifier made by the upstream application, not an email, question, or file path |
+| `group_id` | Link traces from one application session | Use the opaque application session ID, not an email, question, or file path |
 
 A “stable name” does not mean reusing one ID for every run. Keep `workflow_name` stable, make
 `trace_id` unique for every run, and reuse `group_id` only across runs that belong to the same
-upstream request.
+application session.
 
 ```python
 from agents import RunConfig, gen_trace_id
 
-WORKFLOW_NAME = "Read-only evidence worker"
+WORKFLOW_NAME = "Read-only maintenance assistant"
 
 
 def make_run_config(correlation_id: str) -> tuple[str, RunConfig]:
@@ -111,9 +127,9 @@ identifiers and fixed categories in them.
 
 ### 3. Exclude sensitive content while keeping spans
 
-In `v0.19.1`, `trace_include_sensitive_data` defaults to `True`. A generation span may then contain
+In `v0.20.0`, `trace_include_sensitive_data` defaults to `True`. A generation span may then contain
 model input and output, and a function span may contain tool arguments and return values. That
-default is too risky for a worker that reads private sources.
+default is too risky for an application that reads controlled sources.
 
 This course explicitly sets the following value in every run's `RunConfig`:
 
@@ -139,13 +155,13 @@ without depending on the machine's environment.
     failure output, or `RunResult.new_items` and `raw_responses` in memory. Do not print those
     objects. Application logs and local records need their own allowlists.
 
-In `v0.19.1`, the `openai.agents` and `openai.agents.tracing` loggers do not log model and tool input
+In `v0.20.0`, the `openai.agents` and `openai.agents.tracing` loggers do not log model and tool input
 or output by default. Do not set `OPENAI_AGENTS_DONT_LOG_MODEL_DATA` or
 `OPENAI_AGENTS_DONT_LOG_TOOL_DATA` to `0` for debugging. Your application logger should write only
 fixed event names, `trace_id`, status, and error codes—not exception text, prompts, tool arguments,
 or tool results.
 
-### 4. A local record stores only what a caller needs for review
+### 4. A minimal `RunRecord` links results, provenance, and tool phases
 
 A trace is useful for inspecting the run path. A local record lets the application quickly answer
 “what was the result, and where is its trace?” Neither needs a copy of the source documents.
@@ -156,30 +172,52 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class ProvenanceRef(BaseModel):
+    kind: Literal["source", "skill"]
+    artifact_id: str
+    revision: str
+    checksum: str
+
+
+class ToolPhase(BaseModel):
+    tool_name: str
+    phase: Literal["started", "finished"]
+    outcome: Literal["ok", "error", "timeout", "cancelled"] | None = None
+
+
 class RunRecord(BaseModel):
+    application_session_id: str
+    application_run_id: str
     trace_id: str
-    status: Literal["completed", "incomplete", "failed"]
+    provenance: list[ProvenanceRef]
+    tool_phases: list[ToolPhase]
+    completion: Literal[
+        "completed", "incomplete", "failed", "cancelled", "timed_out"
+    ]
     evidence_refs: list[str]
     error_codes: list[str]
 ```
 
-`evidence_refs` stores only a `source_id`, page number, or another stable locator, not the evidence
-text. `error_codes` stores only a stable M03 classification such as `SOURCE_MISSING` or
-`TOOL_TIMEOUT`, not an exception message or stack trace.
+Here `skill` means a public instruction package on the course allowlist, not another Agent or an
+SDK runtime extension point; keep the list empty when the capstone uses none. Source and skill
+records contain only ID, revision/version, and checksum—not body text. `ToolPhase` records only an
+approved tool's start, finish, and finish classification, never arguments or raw output.
+`evidence_refs` keeps stable locators; `error_codes` keeps M03 classifications.
 
 | Store | Do not store |
 | --- | --- |
-| `trace_id` | API keys, access tokens, or client configuration |
-| `completed`, `incomplete`, or `failed` | Raw task text or the complete answer |
-| Evidence references | Source text or raw tool output |
-| Stable error codes | Exception text, stack traces, or absolute local paths |
+| Application session/run IDs and trace ID | API keys, access tokens, or client configuration |
+| Five completion classifications | Raw task text, complete prompts, or complete answers |
+| Source/skill provenance and evidence references | Source text or raw tool output |
+| Tool start/finish classifications and stable error codes | Tool arguments, exception text, stacks, or absolute paths |
 
 Serialize each `RunRecord` as one line of JSON and write it to the record file specified by local
 context. The path, logger, and write function remain local dependencies and do not enter the
 prompt. Tests use `tmp_path`; they must not write to the real run record.
 
-Generate the `trace_id` before calling `Runner.run`. If a model, tool, or run timeout raises, the
-M03 wrapper can still write the same `trace_id` with the final `failed` result.
+Generate the application run ID and `trace_id` before calling `Runner.run`. If the model or a tool
+fails, the run times out, or the caller cancels, the M03 wrapper can still write the same IDs with
+the accurate final classification. No abnormal branch may write `completed`.
 
 ### 5. Inject the runner at its call site so default tests need no model
 
@@ -199,11 +237,12 @@ async def run_observed(
     agent: Agent[object],
     model_input: str,
     local_context: object,
-    correlation_id: str,
+    application_session_id: str,
+    application_run_id: str,
     *,
     run_agent: RunAgent = Runner.run,
 ) -> WorkerResult:
-    trace_id, run_config = make_run_config(correlation_id)
+    trace_id, run_config = make_run_config(application_session_id)
     sdk_result = await run_agent(
         agent,
         model_input,
@@ -214,7 +253,7 @@ async def run_observed(
     result = check_domain_completion(
         sdk_result.final_output_as(WorkerResult, raise_if_incorrect_type=True)
     )
-    append_run_record(trace_id, result)
+    append_run_record(application_session_id, application_run_id, trace_id, result)
     return result
 ```
 
@@ -243,14 +282,15 @@ async def test_run_uses_redacted_trace_config(tmp_path):
         test_agent(),
         "public fixture request",
         test_context(tmp_path),
-        "group_test_001",
+        "session_test_001",
+        "run_test_001",
         run_agent=fake_run_agent,
     )
 
     config = captured["run_config"]
     assert isinstance(config, RunConfig)
     assert config.workflow_name == WORKFLOW_NAME
-    assert config.group_id == "group_test_001"
+    assert config.group_id == "session_test_001"
     assert config.trace_include_sensitive_data is False
     assert result.status == "completed"
 ```
@@ -295,10 +335,10 @@ silently fall back to an SDK default model.
 
 After the real smoke run, inspect the Trace viewer in this order:
 
-1. Find this kind of worker by its fixed `workflow_name`.
+1. Find this kind of application run by its fixed `workflow_name`.
 2. Find this run with the `trace_id` from the local record.
-3. Confirm that `group_id` matches the opaque correlation identifier used for this upstream
-   request.
+3. Confirm that `group_id` matches the opaque correlation identifier used for this application
+   session.
 4. Expand task and turn spans to count model turns.
 5. Inspect function-span tool names, order, timing, and error marks.
 6. Confirm that generation and function spans do not contain raw input or output.
@@ -318,7 +358,7 @@ Answer the questions before expanding the reference answers.
 1. What do a trace and a span represent?
 2. Which two span types in a default trace are most likely to contain model or tool content?
 3. True or false: `trace_include_sensitive_data=False` disables tracing completely.
-4. How should `workflow_name`, `trace_id`, and `group_id` change across runs?
+4. What problems do the application session ID, application run ID, SDK Session ID, and trace ID solve?
 5. Why should user questions and file paths not go directly into `group_id` or `trace_metadata`?
 6. Why does the minimal local record store evidence references instead of evidence text?
 7. True or false: after disabling sensitive trace content, it is safe to print
@@ -338,8 +378,9 @@ Answer the questions before expanding the reference answers.
 2. A generation span may contain model input and output. A function span may contain tool input
    and output.
 3. False. The setting keeps spans and excludes sensitive model and tool inputs and outputs.
-4. Keep `workflow_name` fixed for one kind of worker. Make `trace_id` unique for every run. Reuse
-   `group_id` only for runs belonging to the same upstream request or process.
+4. The application session ID links turns; the application run ID identifies one command and
+   event sequence; the SDK Session ID locates a history container; the trace ID locates one SDK
+   execution path.
 5. These fields are exported with the trace. User content, paths, or identifying values would keep
    exposing domain information after span content was disabled.
 6. References are enough to locate and review a source. Storing source text expands the number of
@@ -361,20 +402,22 @@ Answer the questions before expanding the reference answers.
 ### Lab: add redacted observation and deterministic verification
 
 Complete these tasks on the M03 run wrapper. You may add an observation module and tests, but do
-not copy a parallel worker or rename the teaching skeleton above and treat it as a complete answer.
+not copy a parallel run path or rename the teaching skeleton above and treat it as a complete answer.
 
-1. Define a fixed `WORKFLOW_NAME`. Generate a unique run ID with `gen_trace_id()` for every run,
-   and accept an opaque upstream `correlation_id` as `group_id`.
+1. Define a fixed `WORKFLOW_NAME`. Generate an application run ID for every `Submit`, generate a
+   trace ID with `gen_trace_id()` for every SDK run, and use the opaque application session ID as
+   `group_id`.
 2. Construct `RunConfig` with explicit `workflow_name`, `trace_id`, `group_id`, and
    `trace_include_sensitive_data=False`.
 3. Check workflow names, group IDs, and trace metadata. They must not contain task text, file
    paths, credentials, or real service information.
-4. Define and write a minimal `RunRecord` whose only fields are `trace_id`, `status`,
-   `evidence_refs`, and `error_codes`.
+4. Define and write the minimal `RunRecord`: application session/run IDs, trace ID, source/skill
+   provenance, tool start/finish classifications, final completion, necessary evidence
+   references, and stable error codes.
 5. Inject `run_agent` at the existing run function's call site, defaulting it to `Runner.run`. Do
    not change the SDK global runner or build a general framework.
-6. Use a fake runner to cover success, incomplete results, tool failure, tool timeout, run timeout,
-   and invalid final output. Assert the received `RunConfig`, returned `WorkerResult`, and written
+6. Use a fake runner to cover success, incomplete results, tool failure, model failure, tool
+   timeout, run timeout, and cancellation. Assert the received `RunConfig`, returned `WorkerResult`, and written
    record.
 7. Use synthetic fixtures and conspicuous forbidden strings to check the record file, `caplog`,
    and test failure output. No secret, raw task, evidence text, tool input/output, or exception text
@@ -407,7 +450,8 @@ Completion criteria:
   which span contains the failure;
 - the trace keeps the workflow, correlation identifiers, and span structure but contains no raw
   model or function-tool input or output;
-- the local record contains only the run ID, status, evidence references, and stable error codes;
+- the local record contains only allowed IDs, source/skill provenance, tool phases, completion,
+  evidence references, and error codes;
 - deterministic tests need no API key and make no real model request;
 - default `pytest` excludes the real smoke test;
 - the explicitly run smoke test uses public synthetic sources and can be found in the Trace viewer;
@@ -418,24 +462,24 @@ This chapter does not provide the complete lab implementation. The core material
 trace configuration, a minimal record, and runner injection. You must still connect them to the
 M03 status checks, exception mapping, context, and test scenarios.
 
-## References
+## Version and official references
 
-Last checked: 2026-08-02. Locked project version: `openai-agents==0.19.1`.
+Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
 
 - [Current Agents SDK guide: overall positioning](https://developers.openai.com/api/docs/guides/agents)
-- [`v0.19.1` Tracing: default spans, identifiers, and sensitive data](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
-- [`v0.19.1` Configuration: tracing and log controls](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/config.md)
-- [`v0.19.1` RunConfig source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run_config.py)
-- [`v0.19.1` trace span data structures](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/tracing/span_data.py)
-- [`v0.19.1` trace ID generation source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/tracing/util.py)
-- [`v0.19.1` Runner trace creation source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run.py)
-- [`v0.19.1` SDK tracing tests](https://github.com/openai/openai-agents-python/blob/v0.19.1/tests/test_tracing.py)
-- [`v0.19.1` SDK runner replacement test](https://github.com/openai/openai-agents-python/blob/v0.19.1/tests/test_run.py)
+- [`v0.20.0` Tracing: default spans, identifiers, and sensitive data](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tracing.md)
+- [`v0.20.0` Configuration: tracing and log controls](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/config.md)
+- [`v0.20.0` RunConfig source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run_config.py)
+- [`v0.20.0` trace span data structures](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/tracing/span_data.py)
+- [`v0.20.0` trace ID generation source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/tracing/util.py)
+- [`v0.20.0` Runner trace creation source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run.py)
+- [`v0.20.0` SDK tracing tests](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_tracing.py)
+- [`v0.20.0` SDK runner replacement test](https://github.com/openai/openai-agents-python/blob/v0.20.0/tests/test_run.py)
 - [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)
 
 Changes to the examples: retain `RunConfig`, `workflow_name`, `trace_id`, `group_id`,
 `gen_trace_id()`, and default span behavior from the official tracing documentation and tests;
-adapt them to the course's single-run, read-only worker; explicitly disable sensitive-content
+adapt them to the course's single-run, read-only application path; explicitly disable sensitive-content
 capture; add a minimal local record and call-site dependency injection; remove custom processors,
 SDK global-runner replacement, concurrent traces, handoffs, streaming, real private input, and the
 complete lab answer.

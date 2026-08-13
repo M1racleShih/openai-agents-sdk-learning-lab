@@ -10,7 +10,7 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 <p class="lesson-deck">让下游程序直接接收经过校验的对象，同时把本地依赖留在模型之外。</p>
 
 <div class="lesson-meta" aria-label="课程信息">
-  <span>SDK v0.19.1</span>
+  <span>SDK v0.20.0</span>
   <span>9 道巩固题</span>
   <span>1 次结构化运行</span>
   <span>1 次上下文边界检查</span>
@@ -20,12 +20,13 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 
 学完本章后，你应该能够：
 
-- 用 Pydantic 分别定义应用收到的 `TaskRequest` 和 worker 返回的 `WorkerResult`；
+- 用 Pydantic 分别定义应用收到的 `TaskRequest` 和用例返回的 `WorkerResult`；
 - 说明 `output_type` 怎样让 `final_output` 成为经过校验的对象；
 - 把 `WorkerResult` 直接转换为 JSON，而不解析模型生成的自由文本；
 - 区分模型可见输入和本地 `RunContextWrapper`；
 - 把 logger、允许的资料根目录和客户端等依赖留在本地代码中；
 - 说明本地 context 在什么情况下仍可能被应用代码暴露给模型；
+- 区分最终结构化运行结果与用户可见流式回答这两个接口问题；
 - 完成一次返回 `WorkerResult` 的单 Agent 运行。
 
 !!! note "开始之前"
@@ -36,7 +37,8 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 !!! abstract "本章边界"
 
     本章只处理正常运行中的输入、输出和 context 边界。它不添加工具，也不定义超时、
-    不完整或失败的运行语义；这些内容分别留到 M02 和 M03。
+    不完整或失败的运行语义；这些内容分别留到 M02 和 M03。本章只指出结构化结果与流式
+    回答的张力，不提前给出完整双通道方案；M05 会用锁定版本和目标模型做兼容性 spike。
 
 ## 核心内容
 
@@ -100,7 +102,7 @@ M01 只展示检查成功的路径；校验失败和错误报告留给 M03。
 → 生成 JSON schema”的数据模型。Pydantic 是独立库，不属于 Agents SDK；本章用
 它检查应用输入，并让 Agents SDK 描述 Agent 的结构化输出。
 
-最终 evidence worker 会逐步形成四个模型：
+最终应用用例会逐步形成四个模型：
 
 - `TaskRequest`：任务标识、问题和允许查询的资料标识；
 - `Evidence`：一条整理后的证据及其来源标识；
@@ -125,7 +127,7 @@ Pydantic 字段定义既给 Python 程序使用，也会成为 Agent 的输出 s
 `WorkerResult` 的用法完全相同——把你的模型替换进去即可。
 
 Agent 默认返回文本。把 Pydantic 模型传给 `output_type` 后，SDK 会为它生成 JSON
-schema，并要求模型使用结构化输出。`v0.19.1` 默认使用严格 schema——严格模式拒绝 schema 之外
+schema，并要求模型使用结构化输出。`v0.20.0` 默认使用严格 schema——严格模式拒绝 schema 之外
 的多余字段和宽松类型转换，让输出更可预测。SDK 随后校验并解析模型返回的 JSON。
 
 ```python
@@ -148,8 +150,8 @@ agent = Agent(
 
 正常结束时，`result.final_output` 是 `SummaryResult`，不是等待你再次解析的 JSON 字符串。
 `RunResult.final_output` 的静态类型是 `Any`：单 Agent 运行中它实际就是 `SummaryResult`，
-但 SDK 不能静态保证这一点（后续章节的 handoff 可能让另一个输出类型的 Agent 结束运行）。
-已知本章只有一个 Agent 时，可以显式检查并取得类型：
+但 SDK 的通用结果类型不能静态保证每一种运行配置。已知本章只有一个 Agent 时，可以显式
+检查并取得类型：
 
 ```python
 output = result.final_output_as(SummaryResult, raise_if_incorrect_type=True)
@@ -170,7 +172,25 @@ print(output.model_dump_json())
     结构化输出。结构化输出不被支持时，本章运行会失败——这是预期行为，
     不要退回自由文本。
 
-### 4. 模型上下文和本地 context 不是同一份数据
+### 4. 结构化最终结果与流式回答是两个接口问题
+
+应用最终需要机器可读的 `WorkerResult`，用户却希望在运行过程中看到自然语言逐步出现。
+这两个需求的时间点和数据形状不同：
+
+| 接口 | 消费者 | 何时可用 | 需要的形状 |
+| --- | --- | --- | --- |
+| 结构化运行结果 | 应用代码 | run 完全结束并通过校验后 | 稳定字段、状态、证据和错误 |
+| 流式用户回答 | 终端或其他 UI | run 仍在进行时 | 可以直接阅读的自然语言 delta |
+
+设置 `output_type` 后，模型最终要产生结构化 JSON。不能由此假设 raw text delta 仍然是适合
+展示的自然语言；它可能是序列化 JSON 的片段。也不能在 UI 中边收边猜 partial JSON，因为
+字段顺序、转义和分块都不是稳定协议。
+
+M01 只要求理解这项冲突。M05 会在 `openai-agents==0.20.0` 和显式目标模型上记录实际事件
+形状，再选择一个只有一个 Agent、一次 Runner run、没有 Agent loop 外额外模型调用的最小双通道
+方案。在 spike 完成前，不实现 partial JSON parser，也不把结构化 delta 直接显示给用户。
+
+### 5. 模型上下文和本地 context 不是同一份数据
 
 ```mermaid
 flowchart TB
@@ -216,7 +236,7 @@ pyright 检查整次运行使用的 context 类型是否一致。
     动态 instructions 如果返回资料路径，或者工具把凭据放进返回值，这些内容就会进入
     模型上下文。只返回完成任务所需的数据，不要返回 logger、客户端或凭据。
 
-### 5. 最小示例：使用结构化输出，但把依赖留在本地
+### 6. 最小示例：使用结构化输出，但把依赖留在本地
 
 下面的示例把两件事放在一起：`SummaryResult` 进入模型的输出 schema，`AppContext` 则只
 供本地 Python 代码使用。动态 instructions 可以读取 wrapper，但它返回的字符串没有
@@ -332,7 +352,7 @@ if __name__ == "__main__":
 
 </details>
 
-### 实战：建立 worker 的第一组数据模型
+### 实战：建立应用用例的第一组数据模型
 
 在数据模型定义文件 `src/evidence_worker/contracts.py` 中定义以下 Pydantic 模型：
 
@@ -395,19 +415,19 @@ uv run python -m evidence_worker.structured_agent
 | `output_type` | 告诉 SDK 按哪个模型约束最终输出 | §3 |
 | `final_output_as` | 把 `final_output` 转为目标静态类型；传入 `raise_if_incorrect_type=True` 时再做运行时检查 | §3 |
 | 严格 schema | 拒绝多余字段与宽松类型转换，让结构化输出更可预测 | §3 |
-| `RunContextWrapper[T]` | SDK 包住本地 context 的容器，只给本地 Python 代码读取 | §4 |
-| context | 传给 `Runner.run(..., context=...)` 的本地对象，模型不会自动看到 | §4 |
+| `RunContextWrapper[T]` | SDK 包住本地 context 的容器，只给本地 Python 代码读取 | §5 |
+| context | 传给 `Runner.run(..., context=...)` 的本地对象，模型不会自动看到 | §5 |
 
-## 参考
+## 版本与官方参考
 
-本章最后核对日期：2026-08-01。项目锁定版本：`openai-agents==0.19.1`。
+本章最后核对日期：2026-08-11。项目锁定版本：`openai-agents==0.20.0`。
 
-- [`v0.19.1` Agent definitions：output types](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/agents.md#output-types)
-- [`v0.19.1` Context management](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/context.md)
-- [`v0.19.1` Results：final output](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md#final-output)
-- [`v0.19.1` dynamic instructions example](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/dynamic_system_prompt.py)
-- [`v0.19.1` Agent output schema source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/agent_output.py)
-- [`v0.19.1` Run context source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/run_context.py)
+- [`v0.20.0` Agent definitions：output types](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/agents.md#output-types)
+- [`v0.20.0` Context management](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/context.md)
+- [`v0.20.0` Results：final output](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/results.md#final-output)
+- [`v0.20.0` dynamic instructions example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/dynamic_system_prompt.py)
+- [`v0.20.0` Agent output schema source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/agent_output.py)
+- [`v0.20.0` Run context source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run_context.py)
 
 示例改动：把官方 output type 和 dynamic instructions 示例合并为一个单 Agent 摘要任务；
 改用项目现有的显式模型加载器；加入 logger 和允许的资料根目录来展示本地依赖边界；

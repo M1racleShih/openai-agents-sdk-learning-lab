@@ -2,85 +2,103 @@
 
 [中文](README.md)
 
-A short, hands-on learning project for experienced Python engineers. You will progressively build
-a bounded, read-only evidence worker and learn only the OpenAI Agents SDK features needed for that
-job.
+A short practical course for engineers who are proficient in Python and understand basic Agent
+concepts but have not built an AI application. It teaches only the OpenAI Agents SDK capabilities
+needed for a minimal, observable, testable read-only terminal assistant.
 
 ## Learning outcomes
 
-After completing all modules, you should be able to implement and explain:
+After roughly 11–13 hours across M00–M08, you should be able to build and explain this system from
+scratch:
 
-- the run loop formed by one `Agent` and `Runner`;
-- structured Pydantic input and output;
-- read-only function tools and local run context;
-- timeouts, turn limits, incomplete results, and failure propagation;
-- redacted tracing, deterministic tests, and a real smoke run;
-- a JSON-in/JSON-out worker that another runtime can call.
+```text
+user
+  → thin terminal adapter
+  → UI-independent application use case
+  → one OpenAI Agents SDK Agent
+  → approved read-only sources and read-only CLI/service tools
+  → typed application events, a structured RunOutcome, and a streamed user answer
+```
 
-See [LEARNING_PLAN-en.md](LEARNING_PLAN-en.md) for the full route and
-[LEARNING_LOG-en.md](LEARNING_LOG-en.md) for progress and verification evidence.
+- one `Agent` and `Runner` as the only Agent runtime;
+- Pydantic structured results, local context, and source provenance;
+- read-only tools bounded by allowlists, arguments, environment, time, and output size;
+- stable `completed`, `incomplete`, `failed`, `cancelled`, and `timed_out` semantics;
+- SDK sessions, streaming, cancellation, and redacted traces;
+- a UI-independent `Submit` / `Cancel` use case with a finite typed event set;
+- an interactive prompt-toolkit and Rich terminal plus an ANSI-free plain mode;
+- deterministic default tests with no network, followed by explicit real-model and real-terminal
+  smoke runs.
+
+See [LEARNING_PLAN-en.md](LEARNING_PLAN-en.md) for the route and
+[LEARNING_LOG-en.md](LEARNING_LOG-en.md) for progress and evidence.
+
+## Ownership boundaries
+
+- The SDK owns the agent loop, tool orchestration, sessions, streaming, and traces.
+- The application layer owns use cases, commands, typed events, failure classification, and
+  minimal audit metadata.
+- The terminal handles input and rendering only. It does not own workflow or conversation state.
+- A Session preserves conversation continuity, a Trace preserves an observable path, and the
+  terminal preserves temporary presentation state. None is the authoritative business record.
+- Tools are read-only, and the application explicitly configures or approves every model, tool,
+  and source.
+
+The course does not add handoffs, agents-as-tools, multiple Agents, human approvals, writes,
+SandboxAgent, a GUI, Realtime/voice, or a general runtime abstraction. The capstone uses public
+synthetic sources and a simulated read-only CLI—never company names, internal systems, real
+service addresses, private documents, or real data.
 
 ## How to learn
 
-Each lesson first explains the concepts you must understand, then shows a trimmed or adapted
-official example. You only need to read the lesson. Official sources appear at the end for
-traceability and for checking changes when the SDK is upgraded.
+Each lesson follows “Learning outcomes → Core material → Exercises → Lab → Completion criteria →
+Version and official references,” with a glossary when useful. One project evolves across the
+route; the course does not clone a demo per concept or provide the complete capstone answer.
 
-The learning sequence is simple:
+Suggested sequence:
 
-1. Read the core material and example.
-2. Complete the concept, code-reading, or true/false exercises.
-3. Write code only when behavior needs to be verified in practice.
-4. Run the checks and record the result.
-
-Not every chapter needs its own coding exercise. Several consecutive chapters may share one lab so
-that you do not create repetitive demos just to satisfy a process. Course examples start from the
-official examples for the locked SDK version and remove features unrelated to the current goal.
-
-This project does not teach handoffs, sessions, streaming, Realtime, voice, sandbox agents, or a
-general multi-agent framework in advance.
+1. Read the core material and trimmed official examples.
+2. Answer the concept questions before expanding the references.
+3. Complete the interface and test skeletons in the lab.
+4. Run the checks and record evidence in the learning log.
 
 ## Environment
 
 - Python 3.12
 - `uv`
-- `openai-agents` 0.19.1
+- `openai-agents==0.20.0`
+- `prompt-toolkit==3.0.53`
+- `rich==15.0.0`
 
-Initialize the environment:
+Dependencies are declared in `pyproject.toml` and locked by `uv.lock`:
 
 ```bash
 uv sync
 ```
 
-Run the repository checks:
+Default checks make no real model call:
 
 ```bash
+uv lock --check
 uv run ruff check .
 uv run pyright
 uv run pytest
+uv run mkdocs build --strict
+git diff --check
 ```
 
-### Open the lesson site
-
-Lessons are written in Markdown and rendered as HTML by MkDocs Material:
+Open the lesson site locally:
 
 ```bash
 uv run mkdocs serve
 ```
 
-Run a strict build before publishing:
+See the [lesson site guide](docs/site-guide.en.md) for editing and bilingual maintenance.
 
-```bash
-uv run mkdocs build --strict
-```
+## Explicit model configuration
 
-See the [lesson site guide](docs/site-guide.en.md) for the complete run, editing, bilingual
-maintenance, and troubleshooting workflow.
-
-### Choose a model provider
-
-Every real model exercise requires an explicit `OPENAI_LEARNING_MODEL`. OpenAI is the default
-provider:
+The course never relies on the SDK default model. Every real-model exercise must explicitly set
+`OPENAI_LEARNING_MODEL`:
 
 ```bash
 export LEARNING_MODEL_PROVIDER=openai
@@ -88,7 +106,7 @@ export OPENAI_API_KEY=...
 export OPENAI_LEARNING_MODEL=...
 ```
 
-You may also use any service that provides an OpenAI-compatible endpoint:
+For an OpenAI-compatible endpoint:
 
 ```bash
 export LEARNING_MODEL_PROVIDER=openai-compatible
@@ -97,72 +115,33 @@ export OPENAI_COMPATIBLE_BASE_URL=https://provider-endpoint
 export OPENAI_COMPATIBLE_API_KEY=...
 ```
 
-Third-party providers use the more widely compatible Chat Completions API by default. Switch only
-when the provider explicitly supports the Responses API:
+Third-party endpoints use the more widely compatible Chat Completions API by default. Set the
+following only when the provider explicitly supports the Responses API:
 
 ```bash
 export OPENAI_COMPATIBLE_API=responses
 ```
 
-Common configuration examples:
+Course code obtains the model through `load_learning_model()`. Third-party model calls and OpenAI
+tracing use separate credentials. Without `OPENAI_API_KEY`, you may set
+`OPENAI_AGENTS_DISABLE_TRACING=1`, but that does not complete an exercise that requires the Trace
+viewer.
 
-| Service | `OPENAI_COMPATIBLE_BASE_URL` | Example model ID | API shape |
-| --- | --- | --- | --- |
-| [MiniMax (China)](https://platform.minimaxi.com/docs/guides/text-generation) | `https://api.minimaxi.com/v1` | `MiniMax-M2.7` | `chat_completions` |
-| [DeepSeek](https://api-docs.deepseek.com/guides/multi_round_chat) | `https://api.deepseek.com` | `deepseek-v4-flash` | `chat_completions` |
-| [Zhipu GLM](https://docs.bigmodel.cn/cn/guide/develop/openai/introduction) | `https://open.bigmodel.cn/api/paas/v4` | `glm-5.2` | `chat_completions` |
-
-For example, you can reuse an existing provider-specific environment variable without copying or
-renaming the secret:
-
-```bash
-export LEARNING_MODEL_PROVIDER=openai-compatible
-export OPENAI_COMPATIBLE_API_KEY="$MINIMAX_API_KEY"
-export OPENAI_COMPATIBLE_BASE_URL=https://api.minimaxi.com/v1
-export OPENAI_LEARNING_MODEL=MiniMax-M3
-export OPENAI_COMPATIBLE_API=responses
-```
-
-Replace the secret variable, base URL, model ID, and API shape to use the same loader with
-DeepSeek, GLM, another cloud service, or a local compatible endpoint.
-
-Course code obtains the model through `load_learning_model()`, so the Agent and Runner exercises do
-not need provider-specific branches:
-
-```python
-from evidence_worker.model_provider import load_learning_model
-
-agent = Agent(..., model=load_learning_model())
-```
-
-Third-party model requests and OpenAI tracing use different keys. Disable tracing when no OpenAI
-API key is available:
-
-```bash
-export OPENAI_AGENTS_DISABLE_TRACING=1
-```
-
-To complete a check in the OpenAI Trace viewer, keep a separate `OPENAI_API_KEY` and do not disable
-tracing. Traces may contain model input and output, so do not use sensitive data in exercises.
-
-“OpenAI-compatible” does not mean full support for every OpenAI feature. Providers differ in their
-support for tool calls, structured output, streaming events, and the Responses API. Before a module
-depends on one of those capabilities, perform a real smoke test for that capability.
-
-Never put a secret in the repository, a test fixture, the learning log, or shell history.
+Compatibility for tools, JSON Schema, sessions, and streaming varies across OpenAI-compatible
+providers. M05 requires an explicit opt-in compatibility spike with the locked SDK and the actual
+target model.
+Never put a secret in the repository, fixtures, test output, the learning log, or shell history.
 
 ## Current progress
 
-M00 is in progress: read the [English lesson](docs/lessons/m00-first-agent.en.md) or
-[Chinese lesson](docs/lessons/m00-first-agent.md), complete the exercises, and run the first traceable
-Agent.
+M00 remains `in_progress`; M01–M08 remain `pending`. Start with the
+[English M00 lesson](docs/lessons/m00-first-agent.en.md) or the
+[Chinese lesson](docs/lessons/m00-first-agent.md).
 
-## License and attribution
+## License and sources
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
-
-Lesson examples are adapted from the official examples and documentation of
-[openai/openai-agents-python](https://github.com/openai/openai-agents-python) (MIT licensed), trimmed
-or rewritten for each module's goal. Every lesson lists the corresponding official documentation
-links at the end, so sources stay traceable when the SDK is upgraded. This project is not affiliated
-with OpenAI.
+This project is released under the MIT License. See [LICENSE](LICENSE). SDK interfaces are grounded
+in `openai-agents==0.20.0`, the official OpenAI developer documentation, and the official
+[openai/openai-agents-python](https://github.com/openai/openai-agents-python) repository. Every
+lesson records the checked version, date, and exact sources. This project is not affiliated with
+OpenAI.

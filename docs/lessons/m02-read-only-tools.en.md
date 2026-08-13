@@ -3,17 +3,17 @@ title: M02 · Bounded read-only tools
 description: Derive tool schemas from Python functions, then bound paths, arguments, timeouts, and errors.
 ---
 
-<p class="lesson-kicker">M02 · 90 minutes · concepts + lab</p>
+<p class="lesson-kicker">M02 · 105 minutes · concepts + lab</p>
 
 # Bounded read-only tools
 
 <p class="lesson-deck">Register only the read capabilities the task needs, and expose path escapes, timeouts, and underlying failures.</p>
 
 <div class="lesson-meta" aria-label="Lesson information">
-  <span>SDK v0.19.1</span>
-  <span>10 review questions</span>
-  <span>2 read-only tools</span>
-  <span>5 direct checks</span>
+  <span>SDK v0.20.0</span>
+  <span>14 review questions</span>
+  <span>3 read-only tool categories</span>
+  <span>8 direct checks</span>
 </div>
 
 ## Learning outcomes
@@ -28,20 +28,23 @@ After this chapter, you should be able to:
 - set a per-call timeout for an asynchronous tool;
 - choose whether a tool exception is returned to the model or raised to the application;
 - explain how a tool return value enters the next model input;
-- test reading logic and simulated-service logic directly without calling a model.
+- record approved-source provenance with `source_id`, `revision`, and `sha256`;
+- wrap one fixed read-only simulated CLI with `asyncio.create_subprocess_exec`;
+- bound CLI subcommands, arguments, environment, time, stdout, and stderr;
+- test source, simulated-service, and CLI adapters directly without calling a model.
 
 !!! abstract "Chapter boundary"
 
     This chapter adds local read-only function tools and direct tests only. It does not add write
-    tools, hosted tools, MCP, approvals, sessions, or handoffs, and it does not define one
-    run-level failure result. M03 handles the last item.
+    tools, hosted tools, MCP, approvals, sessions, handoffs, a general command parser, or a sandbox,
+    and it does not define one run-level failure result. M03 handles the last item.
 
 ## Core material
 
 ### 1. `function_tool` turns a Python interface into a model-callable tool
 
 A model cannot call an arbitrary Python function directly. The application first uses
-`function_tool` to create a `FunctionTool`, then places that object in `Agent.tools`. In `v0.19.1`,
+`function_tool` to create a `FunctionTool`, then places that object in `Agent.tools`. In `v0.20.0`,
 the SDK reads the function signature and docstring:
 
 ```text
@@ -118,7 +121,49 @@ A `RunContextWrapper[LessonContext]` may be the function's first argument. The S
 local code but does not include it in the model-visible argument schema. The model supplies the
 remaining arguments.
 
-### 3. Check the path boundary before opening a file
+### 3. An approved source needs reviewable identity and version
+
+“The path is below the allowed root” answers whether it may be read, not which version was read.
+The application first owns a minimum source allowlist, then resolves a model-supplied `source_id`
+to a fixed path and integrity metadata:
+
+```python
+from pydantic import BaseModel
+
+
+class ApprovedSource(BaseModel):
+    source_id: str
+    relative_path: str
+    revision: str
+    sha256: str
+
+
+class SourceProvenance(BaseModel):
+    source_id: str
+    revision: str
+    sha256: str
+```
+
+`ApprovedSource` is application configuration and contains a local relative path.
+`SourceProvenance` belongs in results and minimal records and does not expose that path. Read in a
+fixed order:
+
+```text
+model supplies source_id
+  → application looks up ApprovedSource in its allowlist
+  → resolve and confirm the path remains below the fixture root
+  → read bounded bytes and compute sha256
+  → compare with the approved checksum
+  → decode and return minimum text + SourceProvenance
+```
+
+A revision may be a synthetic fixture revision, publication date, or public version identifier;
+choose one stable meaning per project. The checksum covers the actual bytes read. Update the
+allowlist and tests deliberately when a source changes; never accept a replacement checksum from
+the model at runtime. Missing sources, revision mismatch, and checksum mismatch are failures, not
+empty text or stale success.
+
+### 4. Check the path boundary before opening a file
 
 The ordinary function below shows the minimum path check. It requires a relative path, resolves
 `..` and symbolic links, then confirms that the final path remains below the allowed root.
@@ -190,10 +235,10 @@ def read_public_note(
 This code passes `failure_error_function=None` explicitly. If a file is missing or a path escapes,
 the exception is not rewritten as ordinary-looking tool data.
 
-### 4. An asynchronous tool needs a per-call timeout and an explicit error policy
+### 5. An asynchronous tool needs a per-call timeout and an explicit error policy
 
 An external query can wait forever even when it is read-only. An asynchronous function tool in
-`v0.19.1` accepts `timeout`. This course selects `timeout_behavior="raise_exception"`, so a
+`v0.20.0` accepts `timeout`. This course selects `timeout_behavior="raise_exception"`, so a
 `ToolTimeoutError` ends the run. The M03 application wrapper will turn it into a stable
 `WorkerResult`.
 
@@ -241,16 +286,16 @@ This code shows only the connection. To keep the fragment small, the lab supplie
 By default, `function_tool` turns a handler exception into a model-visible error message so the
 model can recover. The default timeout policy, `error_as_result`, also returns an explicit timeout
 message. Those policies fit a workflow where the model may retry or choose another tool. This
-course needs the upstream program to classify failures consistently, so both exceptions continue
+course needs the application use case to classify failures consistently, so both exceptions continue
 outward. Do not catch an exception and return an empty string, empty list, or “no result.” Those
 values disguise failure as normal data.
 
 !!! note "Timeouts apply only to asynchronous function tools"
 
-    In `v0.19.1`, timeout configuration is supported only for asynchronous `function_tool`
+    In `v0.20.0`, timeout configuration is supported only for asynchronous `function_tool`
     handlers. Write a service query that needs a timeout with `async def`.
 
-### 5. A tool return value enters the next model input
+### 6. A tool return value enters the next model input
 
 A tool call follows this sequence:
 
@@ -272,7 +317,65 @@ to strings first. If you need stable JSON, serialize it explicitly in applicatio
 depending on an object's `str()`. Whatever the format, a tool schema constrains inputs only; it
 does not prove that returned data is correct or safe.
 
-### 6. Test ordinary logic directly, then inspect the tool wrapper
+### 7. A read-only CLI adapter fixes the executable and grammar
+
+“Run a command” is not a course tool. The application exposes only two read actions of one public
+synthetic CLI, such as `status` or `history` for a fictional device. The executable comes from
+local context, subcommands come from a code allowlist, and device IDs pass length and character
+validation. The model cannot supply a command string, executable, working directory, or
+environment variable.
+
+```python
+import asyncio
+from typing import Literal
+
+
+ReadonlySubcommand = Literal["status", "history"]
+STDOUT_LIMIT = 32 * 1024
+STDERR_LIMIT = 4 * 1024
+
+
+async def run_readonly_cli(
+    executable: str,
+    subcommand: ReadonlySubcommand,
+    device_id: str,
+) -> str:
+    argv = [executable, subcommand, "--device-id", device_id]
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
+    )
+    stdout, stderr = await communicate_bounded(
+        process,
+        timeout_seconds=2.0,
+        stdout_limit=STDOUT_LIMIT,
+        stderr_limit=STDERR_LIMIT,
+    )
+    if process.returncode != 0:
+        raise ReadonlyCliError("READ_ONLY_CLI_FAILED")
+    return parse_allowed_fields(stdout)
+```
+
+The fragment deliberately omits `communicate_bounded`, `ReadonlyCliError`, and
+`parse_allowed_fields`. The lab must drain both pipes concurrently in fixed chunks, terminate and
+reap the child as soon as either limit is exceeded, and return only after EOF, exit status, and size
+checks finish. Calling unbounded `communicate()` first and checking length afterward is not a
+memory bound.
+
+- Pass an argv list to `create_subprocess_exec`; there is no shell and no `shell=True`.
+- Fix the executable and read-only subcommands; reject shell punctuation and extra options.
+- Build environment from an empty allowlist instead of copying `os.environ`, so credentials are
+  not inherited.
+- On timeout, kill or terminate and then `await process.wait()` so no child is left behind.
+- Use stderr for local classification only; never return its exception text to the model.
+- Bound and validate stdout before returning only allowed fields, never unbounded raw output.
+
+This is not a sandbox. It executes two known read queries in one known synthetic program. It is not
+suitable for a requirement to execute arbitrary or untrusted commands.
+
+### 8. Test ordinary logic directly, then inspect the tool wrapper
 
 Tool logic does not require a model. Write file reading and service querying as functions that
 accept ordinary dependencies. Tests can pass a temporary directory or fake client directly:
@@ -296,8 +399,9 @@ async def test_catalog_failure_is_not_normal_data() -> None:
 
 These fragments intentionally omit the complete `FailingCatalog`, success cases, and wrapper
 checks. You supply them in the lab. Add small wrapper checks for the tool name, schema constraints,
-`timeout_seconds`, `timeout_behavior`, and final allowlist. This verifies permission boundaries and
-error behavior without an API key.
+`timeout_seconds`, `timeout_behavior`, and final allowlist. Test the CLI with a script that times
+out, overproduces output, exits nonzero, and inspects whether a fake parent credential leaked. This
+verifies permission boundaries and error behavior without an API key.
 
 ## Exercises
 
@@ -318,6 +422,10 @@ Answer the questions before expanding the reference answers.
 9. How does `timeout_behavior="raise_exception"` differ from the default `error_as_result`?
 10. Why is directly testing `read_text_from_root` and `fetch_public_entry` better for boundary
     checks than asking a model to call the tools?
+11. Why are `source_id`, `revision`, and `sha256` all needed to review the source actually used?
+12. Why can the CLI adapter not accept one command string even if instructions say “read-only”?
+13. Why is an unbounded stdout read followed by a length check not an output-size boundary?
+14. Why must the adapter not pass the complete `os.environ` to the synthetic CLI?
 
 <details class="exercise-answers">
 <summary>Reference answers</summary>
@@ -344,19 +452,27 @@ Answer the questions before expanding the reference answers.
 10. Ordinary-function tests have no model randomness, network cost, or API-key dependency. They
     can create exact success, escape, and underlying-failure conditions and assert the precise
     result or exception. You can inspect the wrapper's timeout configuration separately.
+11. The ID names the logical source, revision names its version, and SHA-256 proves the bytes. A
+    missing field can confuse same-named but different content.
+12. A command string reintroduces shell grammar and arbitrary argument combinations. Fix the
+    executable and subcommand in code, and pass every validated argument as a separate argv item.
+13. The unbounded read has already allowed arbitrary memory use. Count bytes while draining the
+    pipes and terminate/reap the child as soon as a limit is exceeded.
+14. The parent environment may contain API keys, proxy credentials, or other secrets. Give the
+    synthetic CLI only the minimum fixed environment it needs.
 
 </details>
 
-### Lab: implement two bounded read-only tools
+### Lab: implement three bounded read-only tool categories
 
 Build on the previous chapter's data models and local context. You may add
 `src/evidence_worker/tools.py` and `tests/test_tools.py`, but do not copy the lesson fragments as a
 complete answer.
 
-1. Prepare public exercise text below `fixtures/`. The tool may read only UTF-8 `.txt` files in
-   this directory.
-2. Implement an ordinary reader that accepts a root and relative path, then add a thin
-   `function_tool` wrapper.
+1. Prepare public exercise text below `fixtures/` and an approved manifest containing
+   `source_id`, `revision`, and `sha256` for every source.
+2. Implement an ordinary reader that resolves `source_id`, checks the root and checksum, then add
+   a thin `function_tool` wrapper.
 3. Reject absolute paths, `..` escapes, symbolic links that point outside the root, non-`.txt`
    files, and missing files.
 4. Implement a simulated service client that supports queries only, then put it in the M01 local
@@ -366,12 +482,17 @@ complete answer.
 6. Set a 2-second per-call timeout on the asynchronous tool, and let handler exceptions and
    timeouts raise outward.
 7. Add the required length or format constraints to both model-supplied arguments.
-8. Register only these two tools with the Agent and confirm that the allowlist has no write
-   operation.
-9. Without calling a model, directly cover these 4 areas: successful text read, path boundaries,
-   successful query, and underlying query failure. The path-boundary check must include an
+8. Implement a simulated read-only CLI adapter with a fixed executable; only `status` / `history`;
+   `create_subprocess_exec`; validated arguments; a minimal environment; a 2-second timeout;
+   32 KiB stdout and 4 KiB stderr limits.
+9. Register only the source reader, service query, and CLI query categories with the Agent and
+   confirm that the allowlist has no external write operation.
+10. Without calling a model, cover successful read, path boundaries, checksum mismatch,
+   successful query, underlying query failure, and provenance round trips. Path checks include an
    absolute path, `..`, an escaping symbolic link, a non-`.txt` file, and a missing file.
-10. For the 5th direct check, inspect the generated tool names, argument schemas,
+11. Cover allowed CLI commands, invalid arguments, timeout, stdout/stderr overflow, nonzero exit,
+    and prove a fake credential in the parent environment does not reach the child.
+12. For the 8th direct check, inspect generated tool names, argument schemas,
     `timeout_seconds=2.0`, `timeout_behavior="raise_exception"`, and final allowlist.
 
 Run the tool tests first, then the complete repository checks:
@@ -385,10 +506,14 @@ uv run pytest
 
 Completion criteria:
 
-- the Agent tool set contains exactly two read-only entry points;
+- the Agent tool set contains exactly three narrow read-only capability categories;
 - no path supplied to a tool can escape the allowed fixture root;
-- invalid arguments, missing files, underlying exceptions, and timeouts never become normal data;
-- all 5 direct checks make no model call and require no API key;
+- the actual source `source_id`, `revision`, and `sha256` are recorded;
+- invalid arguments, missing files, checksum mismatch, underlying exceptions, timeout, and output
+  overflow never become normal data;
+- the CLI uses no shell, inherits no credential, and accepts no arbitrary executable, subcommand,
+  or option;
+- all 8 direct checks make no model call and require no API key;
 - you can identify the exact fields or text each tool returns to the model;
 - all repository checks pass.
 
@@ -396,19 +521,20 @@ This chapter does not provide the complete lab implementation. The core material
 minimal fragments for schemas, path checks, timeouts, and direct tests. You must define the
 simulated client, assemble context, complete both tools, and supply every test.
 
-## References
+## Version and official references
 
-Last checked: 2026-08-01. Locked project version: `openai-agents==0.19.1`.
+Last checked: 2026-08-11. Locked project version: `openai-agents==0.20.0`.
 
 - [Current Agents SDK guide: where tools fit](https://developers.openai.com/api/docs/guides/tools#usage-in-the-agents-sdk)
-- [`v0.19.1` Tools: function tools](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tools.md#function-tools)
-- [`v0.19.1` function schema source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/function_schema.py)
-- [`v0.19.1` function tool and timeout source](https://github.com/openai/openai-agents-python/blob/v0.19.1/src/agents/tool.py)
-- [`v0.19.1` basic tools example](https://github.com/openai/openai-agents-python/blob/v0.19.1/examples/basic/tools.py)
+- [`v0.20.0` Tools: function tools](https://github.com/openai/openai-agents-python/blob/v0.20.0/docs/tools.md#function-tools)
+- [`v0.20.0` function schema source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/function_schema.py)
+- [`v0.20.0` function tool and timeout source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/tool.py)
+- [`v0.20.0` basic tools example](https://github.com/openai/openai-agents-python/blob/v0.20.0/examples/basic/tools.py)
 - [Python `pathlib`: resolving paths and `relative_to`](https://docs.python.org/3.12/library/pathlib.html)
+- [Python `asyncio` subprocesses](https://docs.python.org/3.12/library/asyncio-subprocess.html)
 
-Changes to the examples: replace the official weather tool with restricted text reading and a
-read-only catalog query; add local context, Pydantic argument constraints, resolved-path checks,
-explicit exception propagation, and a 2-second per-call timeout; split handlers into ordinary
-functions that can be tested directly; omit a complete Agent run, hosted tools, MCP, handoffs,
-approvals, and the complete lab answer.
+Changes to the examples: replace the official weather tool with restricted source reading, a
+read-only catalog query, and a fixed-grammar synthetic CLI; add provenance, local context,
+Pydantic argument constraints, resolved paths, explicit exceptions, a 2-second timeout, and output
+limits; split handlers into directly testable functions; omit a complete Agent run, hosted tools,
+MCP, handoffs, approvals, sandboxing, and the complete lab answer.

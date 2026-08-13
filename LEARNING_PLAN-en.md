@@ -5,334 +5,251 @@
 ## Goal and audience
 
 This route is for engineers who are proficient in Python and understand common Agent concepts but
-have not built AI applications. The goal is not to study the entire OpenAI Agents SDK. After 8–10
-hours of focused work, you should be able to independently implement and explain a bounded,
-read-only evidence worker that an upstream runtime can call.
-
-After completing the route, you should be able to:
-
-- explain the run loop formed by an `Agent`, `Runner`, model calls, and tool calls;
-- define input and machine-readable output with Pydantic;
-- use local function tools to read allowed sources and query read-only services;
-- distinguish model-visible context from run context used only by local code;
-- set boundaries for tools and complete runs, and report incomplete, timed-out, and failed work
-  truthfully;
-- inspect redacted traces and keep the minimum run record needed for review;
-- cover core logic with deterministic tests and then perform one real model smoke run;
-- expose a stable JSON-in/JSON-out entry point for another runtime.
-
-This is enough to start building the target worker. It does not mean you have mastered multi-agent
-systems, long-term memory, human approval, or production autonomous agents.
-
-## The system you will build
+have not built an AI application. It does not survey the full SDK. After roughly 11–13 hours, you
+should be able to begin building this minimum application:
 
 ```text
-upstream runtime
-  → JSON task request
-  → one Agents SDK run
-  → read-only document tool / read-only query tool
-  → structured WorkerResult
-  → upstream runtime produces the final response
+user
+  → thin terminal adapter
+  → UI-independent application use case
+  → one OpenAI Agents SDK Agent
+  → approved read-only sources and read-only CLI/service tools
+  → typed application events, a structured RunOutcome, and a streamed user answer
 ```
 
-The SDK runs the model/tool loop. Application code still owns tool implementations, permission
-boundaries, timeouts, result validation, records, and the external entry point.
+After the route, you should be able to:
 
-## Learning scope
+- explain the relationship between one application turn and one SDK run;
+- use one `Agent` and `Runner` as the only agent loop;
+- select a model explicitly instead of relying on the SDK default;
+- define requests, source provenance, errors, and structured results with Pydantic;
+- build read-only fixture, simulated-service, and constrained CLI tools;
+- distinguish completed, incomplete, failed, cancelled, and timed-out work;
+- continue two turns with a Session and stream user answers plus tool progress;
+- translate SDK events into a finite, stable, UI-independent application event set;
+- build interactive and plain terminals with prompt-toolkit and Rich;
+- keep default tests offline with fake runners, streams, and event sources;
+- complete explicit real-model and real-terminal smoke runs.
 
-| Must learn | Not covered in this route |
+This means you can begin the minimum application. It does not mean the application is production
+ready.
+
+## Responsibility split
+
+| Layer | Owns | Does not own |
+| --- | --- | --- |
+| Agents SDK | Agent loop, tool orchestration, sessions, streaming, traces | Domain completion, source approval, terminal UI |
+| Application | Use cases, commands, typed events, failure classification, minimal audit metadata | A second Agent runtime or general runtime framework |
+| Terminal adapter | Input, shortcuts, batched refresh, Markdown/table rendering | Workflow, SDK Session, authoritative run state |
+
+A Session preserves conversation continuity, a Trace preserves an observable path, and terminal
+state serves the current presentation. The application's `RunOutcome` is the authoritative run
+conclusion; the application must explicitly persist any necessary business record.
+
+## Scope
+
+| Must learn | Explicitly excluded |
 | --- | --- |
-| `Agent` and `Runner` | handoffs and agents-as-tools |
-| `output_type` and Pydantic | sessions and long-term memory |
-| `RunContextWrapper` | streaming, Realtime, and voice |
-| local `function_tool` | sandbox agents |
-| tool timeouts and error propagation | human approval and resumable pauses |
-| `max_turns` and run-level timeouts | a general multi-agent framework |
-| `RunResult` and status classification | a complete eval platform |
-| tracing and sensitive-data controls | custom `ModelProvider`, automatic routing, and failover |
-| deterministic tests and one real smoke run | production experiment execution |
+| `Agent`, `Runner.run`, `Runner.run_streamed` | Handoffs and agents-as-tools |
+| `output_type`, Pydantic, application-owned `RunOutcome` | Multiple Agents |
+| `RunContextWrapper` and source provenance | Human approvals and write operations |
+| Local read-only `function_tool` | SandboxAgent |
+| `RunConfig`, tracing, and redacted records | GUI, Realtime, and voice |
+| SDK Session and one capstone strategy | General runtime abstractions |
+| Streaming events, cancellation, settlement | Automatic routing, failover, and a complete eval platform |
+| prompt-toolkit, Rich, and plain mode | Production deployment and real private data integration |
 
-Deferred topics are not unimportant. The current read-only worker does not need them. Learn them
-later when a concrete requirement appears.
+Every external capability remains read-only. The final two-channel path uses deterministic
+application-side composition, not a dedicated result-submission tool: the Agent streams natural
+language while the application derives status, provenance, evidence, and errors from controlled
+tool results and the settled run.
 
 ## How to learn
 
-The entire route evolves one project. It does not copy a new demo for every concept.
+One project evolves across the route. Lessons follow “Learning outcomes → Core material →
+Exercises → Lab → Completion criteria → Version and official references.” Write code only when
+behavior must be observed. Lessons provide minimal interfaces, event mappings, and test skeletons,
+not a complete capstone implementation.
 
-Writing a lesson and studying it are separate activities.
-
-When writing a lesson:
-
-1. Read the official documentation, source, and examples for the project's locked version.
-2. Select only the knowledge required to complete the chapter goal.
-3. Prefer adapting a version-matched official example, and state its source and changes.
-4. Check lesson interfaces against the installed SDK and automated checks.
-5. Record the version, review date, and references at the end.
-
-When studying:
-
-1. The lesson contains all required material; start with its core content and example.
-2. Complete concept, code-reading, or true/false exercises before expanding the reference answers.
-3. Write code only when behavior needs to be verified; several consecutive chapters may share one
-   lab.
-4. Run the checks and confirm the result meets the module completion criteria.
-
-Lessons use the order “Core material → Exercises → References.” A lab appears only where coding is
-necessary, or after several related chapters. Official documentation provides traceability and an
-upgrade check; it is not the default reading assignment.
+Every chapter checks interfaces against official sources for `openai-agents==0.20.0`. A third-party
+endpoint's compatibility requires an explicit smoke test; the label “OpenAI-compatible” is not
+evidence by itself.
 
 ## Modules and completion criteria
 
-### M00: Run one observable Agent (45 minutes)
+### M00: First observable Agent (45 minutes)
 
-Learn:
+Learn the SDK/Responses responsibility split, `Agent`, `Runner.run`, the agent loop, `RunResult`,
+and traces. Run one explicitly modeled Agent and find the run in the Trace viewer.
 
-- how the responsibilities of the Agents SDK differ from direct Responses API use;
-- `Agent`, `Runner.run`, one run, and stopping conditions;
-- what a default trace shows.
+Complete when you can explain that the SDK advances the loop while the application defines its
+capability boundaries, and that the final product has one SDK Agent runtime.
 
-Build:
+### M01: Structured results and local context (75 minutes)
 
-- run one Agent with an explicit model;
-- print `final_output`;
-- find the run in the Trace viewer.
+Learn `TaskRequest`, `Evidence`, `WorkerError`, `WorkerResult`, `output_type`, strict JSON Schema,
+`final_output_as`, and the boundary between model input and local `RunContextWrapper` data.
+Recognize that a final structured result and a streamed user-visible answer are separate interface
+problems; do not solve both yet.
 
-Complete when:
+Complete one structured single-Agent run. The result must serialize directly, while loggers,
+paths, clients, and credentials remain outside model context.
 
-- you can draw the “model → tool → model → final output” loop;
-- you can explain why the upstream application still owns tools, permissions, and persistent state;
-- the code runs repeatedly and no secret enters the repository.
+### M02: Read-only tools and source boundaries (105 minutes)
 
-Submit: `feat(m00): 跑通首个可追踪的 Agent`
+Learn function-tool schemas and errors; `ApprovedSource` / `SourceProvenance` with `source_id`,
+`revision`, and `sha256`; fixture allowlists, resolved paths, checksums, and minimal return values;
+read-only service-query limits; and a constrained read-only CLI adapter.
 
-### M01: Establish typed task and result models (60 minutes)
+The CLI lab uses `asyncio.create_subprocess_exec`, never `shell=True`. Fix the executable and
+read-only subcommands; validate arguments; allowlist environment variables; bound time, stdout,
+and stderr; and never expose credentials, a complete environment, or unbounded raw output to the
+model.
 
-Learn:
+Complete when the tools have no external write capability, provenance is reviewable, failures are
+not disguised as data, and direct tests call no model.
 
-- how `output_type` makes the final result a Pydantic object;
-- the difference between model input and local `RunContextWrapper` data;
-- why downstream programs should not parse free text.
+### M03: Bounded runs and truthful failures (75 minutes)
 
-Build:
+Distinguish `RunResult`, `new_items`, `raw_responses`, and domain `RunOutcome`. Bound one tool call,
+model turns, and total elapsed time. Define `completed`, `incomplete`, `failed`, `cancelled`, and
+`timed_out`, plus stable reasons/codes that do not expose SDK exception text.
 
-- define `TaskRequest`, `Evidence`, `WorkerError`, and `WorkerResult`;
-- return a typed result from one Agent;
-- put dependencies such as the logger and allowed source root in local context.
+Complete when failure, cancellation, timeout, and incomplete work can never become `completed`,
+and callers need no log parsing.
 
-Complete when:
+### M04: Traces, minimal metadata, and deterministic tests (60 minutes)
 
-- a successful run returns a directly serializable `WorkerResult`;
-- you can identify what the model sees and what remains in local code;
-- credentials, clients, and loggers are not inserted into the prompt.
+Learn `workflow_name`, `trace_id`, `group_id`, `trace_include_sensitive_data=False`; distinguish
+application session IDs, application run IDs, and trace IDs; and design `RunRecord` with
+provenance, tool start/finish classifications, final completion, and evidence references.
 
-Submit: `feat(m01): 建立结构化结果与上下文边界`
+Inject the runner at its call site, write only minimal records, and exclude `smoke` by default.
+Do not store credentials, complete prompts, complete sources, unbounded tool output, or sensitive
+user content.
 
-### M02: Give the Agent only the read-only capabilities it needs (90 minutes)
+### M05: Sessions, streaming, and cancellation (120 minutes)
 
-Learn:
+Learn that one application turn maps to one `Runner.run_streamed`; compare `to_input_list()`, SDK
+Session, and `previous_response_id`; choose an injectable Session factory backed initially by a
+temporary SQLiteSession; and distinguish `ResponseTextDeltaEvent`, `RunItemStreamEvent`,
+`tool_called`, and `tool_output`.
 
-- how Python type annotations and docstrings form a function-tool schema;
-- tool allowlists, argument constraints, timeouts, and error policy;
-- how tool return values re-enter model context.
+Consume `stream_events()` until it ends before treating the run as settled. Learn `result.cancel()`
+and `result.cancel(mode="after_turn")`.
 
-Build:
+Run an explicit compatibility spike with the locked SDK and target model. Record the actual shape
+of `output_type` plus raw text deltas. Never display structured JSON deltas or implement a partial
+JSON parser.
 
-- implement a text tool that can read only a fixture directory;
-- implement a read-only simulated service query tool;
-- add a per-call timeout to asynchronous tools;
-- test tool success, path escape attempts, and underlying failures directly.
+The capstone uses one tested dual channel: the Agent's final message stays natural language and
+produces `message_delta`; the application deterministically composes `RunOutcome` from controlled
+tool results, the context accumulator, exception mapping, and settled final text. There is one
+Agent and one Runner run, with no result-submission tool or model call outside that Agent loop.
 
-Complete when:
+Complete when fake-stream tests cover normal settlement, incomplete source coverage,
+failures, timeouts, and both cancellation modes. Real-model spike and smoke tests are opt-in.
 
-- the tool set contains no write operation;
-- a path cannot escape the allowed root;
-- a timeout or exception is not disguised as normal data;
-- tool logic can be tested without calling a model.
+### M06: UI-independent application use case and typed events (105 minutes)
 
-Submit: `feat(m02): 增加有边界的只读函数工具`
+Define `Submit` and `Cancel`, plus `MessageDelta`, `ToolStarted`, `ToolFinished`, `EvidenceFound`,
+`RunStateChanged`, `Final`, and `Error`. The application translates SDK raw and high-level events;
+the terminal never sees SDK event objects. The use case emits events asynchronously and returns a
+final `RunOutcome`.
 
-### M03: Keep incomplete and failed work truthful (90 minutes)
+Depend directly on the Agents SDK; do not create a general runtime interface. `Cancel` must act on
+the current `RunResultStreaming` or running task, not set an unread Boolean.
 
-Learn:
+Complete when tests cover event order, success, tool/model failure, timeout, cancellation,
+incomplete results, and two consecutive turns in one session.
 
-- `RunResult`, `final_output`, and items produced during a run;
-- `max_turns`, tool timeouts, run-level timeouts, and SDK exceptions;
-- the difference between “the SDK call succeeded” and “the domain task completed.”
+### M07: Thin terminal adapter (90 minutes)
 
-Build:
+Use `PromptSession.prompt_async()` for input, history, shortcuts, and Ctrl-C. Use Rich only for
+completed Markdown, tables, and limited status. Batch token deltas into append-only refreshes; do
+not redraw the transcript per token or use full-screen Rich Live in the first version. Exactly one
+component owns stdout/cursor at a time.
 
-- define `completed`, `incomplete`, and `failed` states;
-- handle timeouts, turn limits, tool failures, and invalid final output in one application wrapper;
-- return a machine-readable error even on exceptional paths;
-- cover missing sources, tool failures, timeouts, and incomplete results.
+Interactive and ANSI-free `--plain` modes use the same M06 use case. Ctrl-C becomes `Cancel` while
+a run is active and exits only while idle. Test the renderer, batching, plain mode, and cancellation
+with a fake event source and no real TTY.
 
-Complete when:
+### M08: Public capstone and readiness review (75 minutes)
 
-- all four abnormal scenarios produce stable, assertable results;
-- `completed` cannot contain an error that prevented task completion;
-- the caller can determine task completion without parsing logs.
+Build a user-facing, single-Agent, read-only terminal assistant that inspects maintenance records
+for fictional devices. Every source, device name, and simulated CLI response is public synthetic
+fixture data.
 
-Submit: `feat(m03): 建立有界运行与真实失败语义`
+Acceptance:
 
-### M04: Use traces and tests to see what happened (75 minutes)
+1. Interactive input receives a streamed natural-language answer.
+2. The same use case returns a structured `RunOutcome`.
+3. An SDK Session supports two consecutive turns.
+4. Only the minimum allowlisted sources are loaded.
+5. Read-only CLI/query tools run on demand.
+6. Source provenance is recorded.
+7. A trace correlates with redacted application metadata.
+8. Success, missing sources, tool failure, model failure, timeout, cancellation, and incomplete
+   results are distinguishable.
+9. Plain and interactive modes use the same use case.
+10. There are no writes, handoffs, multiple Agents, approvals, GUI, or general runtime framework.
+11. Default tests make no network call.
+12. One explicit real-model smoke run and one real-terminal run are completed.
 
-Learn:
+The readiness review requires a 15-minute architecture explanation, one small cross-layer change
+without the answer, all automated checks, real-model and terminal smoke runs, and an explanation
+of why Session, Trace, application `RunOutcome`, and terminal state are different.
 
-- default run, model, and function-tool spans;
-- the default behavior and risk of `trace_include_sensitive_data`;
-- the different evidence supplied by unit tests, integration tests, and a real smoke run.
-
-Build:
-
-- give the workflow a stable name and correlation identifier;
-- disable capture of sensitive input and tool content in traces;
-- save a local record containing only status, evidence references, error classification, and run ID;
-- replace the runner boundary through dependency injection and write deterministic tests with no
-  real model call;
-- keep one explicitly marked real-model smoke test.
-
-Complete when:
-
-- you can use a trace to explain which tools ran and where the run failed;
-- the repository, test output, and local records contain no secret or raw private data;
-- default tests cannot accidentally make a real API call.
-
-Submit: `test(m04): 增加脱敏观测与确定性验证`
-
-### M05: Finish the JSON-in/JSON-out evidence worker (120 minutes)
-
-Complete the capstone:
-
-- accept one task request from standard input or a file;
-- let the worker read allowed sources and call read-only query tools as needed;
-- write exactly one `WorkerResult` JSON object to standard output;
-- write logs to standard error;
-- define clear status and exit behavior for completed, incomplete, and failed work;
-- return curated results to the caller instead of every source document;
-- cover success, missing sources, tool failure, timeout, and incomplete results with automated
-  checks;
-- complete one real end-to-end model run.
-
-Complete when:
-
-- a new caller can integrate using only the JSON schema;
-- the run can be reviewed without storing tool output indefinitely;
-- the implementation has no sessions, handoffs, write tools, or general framework;
-- without looking at the finished implementation, you can rebuild the core skeleton.
-
-Submit: `feat(m05): 完成有边界的只读证据 worker`
-
-### M06: Review readiness for the target project (45 minutes)
-
-Complete a 15-minute explanation and one small change:
-
-- explain the data and control flow from upstream call to structured return;
-- explain which layer identifies each failure scenario;
-- add one new read-only field or tool and its tests;
-- list the boundaries that must be replaced when the generic worker is connected to the target
-  project.
-
-You are ready to start the target feature only after the explanation, small change, automated
-checks, and real smoke run all pass.
-
-Submit: `docs(m06): 记录 worker 就绪证据与剩余问题`
+The lesson does not provide the complete capstone implementation. The learner must assemble it
+and preserve verification evidence.
 
 ## Suggested schedule
 
-Use two adjacent focused sessions:
+- Session 1, about 3 hours 45 minutes: M00–M02.
+- Session 2, about 3 hours 15 minutes: M03–M04 and the first half of M05.
+- Session 3, about 3 hours 45 minutes: the second half of M05 through M07.
+- Session 4, about 1 hour 15 minutes: M08.
 
-- first session, about 4 hours: M00–M02;
-- second session, about 5 hours: M03–M06.
-
-You may compress the route into one day, but on the next day spend 20 minutes rebuilding the M05
-skeleton without looking at the code. If that fails, review only the modules exposed by the failed
-rebuild.
-
-## Git workflow
-
-Use the separate `M1racleShih/openai-agents-sdk-learning-lab` repository:
-
-- keep it private at first and make it public only after a public-safety check;
-- keep one evolving capstone on `main`;
-- use one runnable Conventional Commit per module, without branches or pull requests that add
-  process but no learning value;
-- record only completion time, verification evidence, one corrected misconception, and one open
-  question in `LEARNING_LOG-en.md`;
-- add the `v0.1-learning-complete` tag after M06;
-- never include a company name, internal system name, private document, real service address,
-  credential, or real data.
-
-Minimum repository structure:
-
-```text
-README.md
-README-en.md
-LEARNING_PLAN.md
-LEARNING_PLAN-en.md
-LEARNING_LOG.md
-LEARNING_LOG-en.md
-pyproject.toml
-uv.lock
-mkdocs.yml
-docs/
-  index.md
-  index.en.md
-  lessons/
-src/evidence_worker/
-tests/
-fixtures/
-```
-
-Do not use a GitHub Project, a course issue list, or a copied codebase for every lesson. Git history
-and the learning log are enough to track progress.
+Total: about 12.5 hours. Waiting time for real-model and terminal smoke runs is not study time.
 
 ## Version and environment policy
 
-- use Python 3.12 and `uv`;
-- lock the confirmed `openai-agents` version in the first commit;
-- configure and record the model name explicitly instead of relying on the SDK default;
-- supply API keys only through environment variables or a local secret facility;
-- put variable names only, never real values, in `.env.example`;
-- upgrade the SDK in a separate commit and rerun every acceptance scenario.
+- Python 3.12 and `uv`;
+- `openai-agents==0.20.0`, `prompt-toolkit==3.0.53`, and `rich==15.0.0`;
+- `uv.lock` is the reproducibility source;
+- model IDs are always explicit;
+- API keys come only from environment variables or a local secret facility;
+- default `pytest` excludes real-model smoke tests;
+- every SDK upgrade rechecks Agent, Runner, structured output, function_tool, RunConfig, tracing,
+  sessions, streaming, cancellation, and event interfaces.
 
-The SDK version confirmed at the start on 2026-07-30 is 0.19.1. Versions will continue to change;
-`uv.lock` is the reproducibility source for this learning project.
+The official 0.20.0 release changes the implicit default model and includes an MCP dependency
+migration. The course relies on neither the default model nor MCP, so neither changes its design.
+
+The upgrade audit from the prior lock confirms that the course's `Agent`/`output_type`,
+`Runner.run`, `Runner.run_streamed`, `function_tool` timeout, `RunConfig` tracing fields,
+`SQLiteSession`, stream events, and both cancel modes remain available. The new optional
+tool-name-collision policy in `RunConfig` does not change any course call. The current versions and
+these public entry points are guarded by `tests/test_dependency_baseline.py`.
 
 ## Sources
 
-This course primarily uses materials for the locked Python SDK version:
+Last checked: 2026-08-11. Locked version: `openai-agents==0.20.0`.
 
-- [Python SDK v0.19.1](https://github.com/openai/openai-agents-python/tree/v0.19.1)
-- [Quickstart](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/quickstart.md)
-- [Agent definitions](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/agents.md)
-- [Running agents](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/running_agents.md)
-- [Results](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/results.md)
-- [Context management](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/context.md)
-- [Tools](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tools.md)
-- [Tracing](https://github.com/openai/openai-agents-python/blob/v0.19.1/docs/tracing.md)
-- [Versioned examples](https://github.com/openai/openai-agents-python/tree/v0.19.1/examples)
+- [Agents SDK overview](https://developers.openai.com/api/docs/guides/agents)
+- [Running agents](https://developers.openai.com/api/docs/guides/agents/running-agents)
+- [Results and state](https://developers.openai.com/api/docs/guides/agents/results)
+- [Integrations and observability](https://developers.openai.com/api/docs/guides/agents/integrations-observability)
+- [Python SDK streaming](https://openai.github.io/openai-agents-python/streaming/)
+- [Python SDK sessions](https://openai.github.io/openai-agents-python/sessions/)
+- [Python SDK v0.20.0 source and examples](https://github.com/openai/openai-agents-python/tree/v0.20.0)
+- [Official v0.20.0 release](https://github.com/openai/openai-agents-python/releases/tag/v0.20.0)
 
-The [OpenAI Agents SDK developer guide](https://developers.openai.com/api/docs/guides/agents)
-supplements the versioned sources with product positioning, the distinction between the Agents SDK
-and the Responses API, and current official direction. If the two sources differ, course interfaces
-and behavior follow the `v0.19.1` source, documentation, and observed local behavior.
-
-You do not need to read all these sources. Each lesson selects the required material and lists its
-specific sources at the end.
-
-Lesson structure takes inspiration from the Hello-Agents
-[concept chapter](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter3/%E7%AC%AC%E4%B8%89%E7%AB%A0%20%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%E5%9F%BA%E7%A1%80.md)
-and [practice chapter](https://github.com/datawhalechina/hello-agents/blob/main/docs/chapter4/%E7%AC%AC%E5%9B%9B%E7%AB%A0%20%E6%99%BA%E8%83%BD%E4%BD%93%E7%BB%8F%E5%85%B8%E8%8C%83%E5%BC%8F%E6%9E%84%E5%BB%BA.md):
-explain concepts first, then show examples and exercises, and finish with references. Their
-technical content is not a source for this course.
+Each lesson selects the minimum sources for its objective and records exact references. Learners
+do not need to read all official documentation first.
 
 ## Start here
 
-Open the [M00 English lesson](docs/lessons/m00-first-agent.en.md) or
-[M00 Chinese lesson](docs/lessons/m00-first-agent.md):
-
-1. Read the core material and example.
-2. Answer the concept and code-reading questions before checking the reference answers.
-3. Write the first Agent described by the lab.
-4. Run the repository checks and one real model call.
-5. Find the run in the Trace viewer, then record the verification evidence in the learning log.
+Open the [English M00 lesson](docs/lessons/m00-first-agent.en.md) or
+[Chinese lesson](docs/lessons/m00-first-agent.md). M00 remains `in_progress`; every later module
+remains `pending` until the learner personally completes its lab and verification.
