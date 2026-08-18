@@ -159,8 +159,9 @@ async with asyncio.timeout(20.0):
     )
 ```
 
-超时离开 context manager 后，应用收到内置 `TimeoutError`。取消是协作式的；运行超时
-不会倒转已经完成的外部操作。这也是本课程在引入完整恢复策略前只允许只读工具的原因。
+超时离开 context manager 后，应用收到内置 `TimeoutError`。取消是协作式的：被取消的
+代码要主动让出控制权，运行超时不会倒转已经完成的外部操作。这也是本课程在引入
+完整恢复策略前只允许只读工具的原因。
 
 ### 4. 用稳定代码转换异常，不把异常文本当协议
 
@@ -178,13 +179,13 @@ async with asyncio.timeout(20.0):
 | 模型输出不符合 `output_type` | `failed` | `INVALID_FINAL_OUTPUT` |
 | 其他无法安全分类的异常 | `failed` | `UNEXPECTED_FAILURE` |
 
-`v0.20.0` 的 `Runner.run` 接受 `error_handlers`。`"max_turns"` 和
-`"invalid_final_output"` handler 可以返回一个受控的最终对象；SDK 会用同一个
-`output_type` 再校验它。handler 不会重新调用模型，也不会重放已经发生的工具调用。
+`v0.20.0` 的 `Runner.run` 接受 `error_handlers`，其中 `"max_turns"` 和
+`"invalid_final_output"` 两个入口可以返回受控的最终对象。写法和 SDK 的后续行为见
+第 5 节的骨架代码。
 
 其余异常在应用最外层转换。M02 中 `failure_error_function=None` 会让工具 handler 的原始
 异常继续抛出，所以服务适配器应该先把预期的底层异常改成应用自己的
-`SourceQueryError`。这样包装层不会把 `TypeError` 等编程错误误标为普通工具故障。
+`SourceQueryError`。这样包装层不会把 `TypeError` 这类编程错误误当成工具故障。
 
 最后仍要保留一个通用异常出口，让应用用例可以返回机器可读失败。这个出口应在本地记录
 堆栈，但对外只返回固定代码和安全说明，不回传 SDK 异常文本、路径或凭据。SDK 和供应商
@@ -269,6 +270,9 @@ async def run_bounded(
         return failed_result("UNEXPECTED_FAILURE")
 ```
 
+两个 error handler 的机制：handler 返回的对象会被 SDK 用同一个 `output_type` 再校验
+一次；handler 不会重新调用模型，也不会重放已经发生的工具调用。
+
 `ModelBehaviorError` 不只表示无效最终输出；模型调用不存在的工具或生成畸形工具参数时也
 可能触发它。因此上面的后备分支使用 `MODEL_BEHAVIOR`，而
 `INVALID_FINAL_OUTPUT` 只由对应的 error handler 产生。
@@ -285,8 +289,8 @@ async def run_bounded(
 结果不完整 → status == "incomplete"，保留的答案和证据仍符合结果模型的一致性规则
 ```
 
-另外检查 Pydantic 会拒绝这三类对象：`completed` 加错误、失败/取消/超时加领域答案、
-非完成状态没有错误。`max_turns` 和无效最终输出也要分别触发对应 handler。测试可以在调用点替换
+另外检查 Pydantic 会拒绝这三类对象：`completed` 带着错误、失败/取消/超时还带着
+答案或证据、非完成状态没有错误。`max_turns` 和无效最终输出也要分别触发对应 handler。测试可以在调用点替换
 `Runner.run`，但本章不建立通用 runner 抽象；M04 会用依赖注入整理这个边界。
 
 只有断言失败时，才查看异常的 `run_data`、`new_items` 或本地日志，定位模型在哪一轮调用
@@ -374,8 +378,9 @@ uv run pytest
 - 应用调用方只读 `status` 和 `errors` 就能区分完成、不完整、失败、取消和超时；
 - 测试不需要 API key，完整仓库检查全部通过。
 
-本章不提供实战完整实现。核心内容给出了状态不变量和异常包装的连接方式；你仍需把它们
-应用到自己的 `TaskRequest`、`WorkerResult`、资料覆盖检查、错误构造函数和测试场景中。
+本章不提供实战完整实现。核心内容给出了状态一致性规则和异常包装的连接方式；你仍需
+把它们应用到自己的 `TaskRequest`、`WorkerResult`、资料覆盖检查、错误构造函数和测试
+场景中。
 
 ## 版本与官方参考
 

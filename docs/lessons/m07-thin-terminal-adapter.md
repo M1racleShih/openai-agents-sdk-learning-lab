@@ -22,7 +22,7 @@ description: 用 prompt-toolkit 处理输入、用单一输出所有者增量显
 
 - 用 `PromptSession.prompt_async()` 读取异步输入、历史与有限快捷键；
 - 让同一个终端组件在一次运行期间独占 stdout/cursor；
-- 对 token delta 做小批次、append-only 刷新；
+- 对 token delta 做小批次、append-only（只追加新文本，不重画旧内容）刷新；
 - 只让 Rich 渲染已完成 Markdown、表格和有限状态信息；
 - 提供无 ANSI 的 `--plain` 模式用于 SSH、重定向和测试；
 - 把活动运行期间的 Ctrl-C 翻译为 `Cancel`，空闲时才退出；
@@ -67,7 +67,7 @@ async def read_command(session: PromptSession[str]) -> str:
 历史文件只保存用户已经提交的终端输入，因此真实应用还要公布保留策略；课程测试使用
 `tmp_path`。`--plain` 在重定向环境可以关闭持久历史，避免自动化输入被意外保存。
 
-每个 loop 只在没有活动运行时显示 prompt。用户提交后，PromptSession 交出 cursor；renderer
+主循环只在没有活动运行时显示 prompt。用户提交后，PromptSession 交出 cursor；renderer
 独占输出直到该 turn settle，然后才显示下一个 prompt。
 
 ### 3. delta 小批次刷新，而不是每 token 重绘
@@ -91,7 +91,7 @@ Final/Error → flush remainder → newline → completed metadata
 
 给 renderer 一个很小的输出端口，例如 `write(text)`、`flush()` 和 `isatty()`。interactive
 renderer 可以在完成时调用 Rich `Console.print(Markdown(...))` 或 `Table`；plain renderer
-只调用文本 writer。两者都由同一个 terminal controller 顺序调用。
+只调用文本 writer。两者都由同一个 terminal controller（终端主循环组件）顺序调用。
 
 禁止的第一版结构：
 
@@ -128,8 +128,9 @@ active run + Ctrl-C    → Cancel(session_id, application_run_id)
 ```
 
 controller 从 M06 得到当前 application run ID，再发 `Cancel`。它不直接调用
-`RunResultStreaming.cancel()`。取消期间显示一条有限状态信息即可；不要打印堆栈或已经累积
-的完整对象。第二次 Ctrl-C 也不应绕过应用状态随意报告成功；实战要定义并测试稳定行为。
+`RunResultStreaming.cancel()`。取消期间显示一条有限状态信息即可；不要打印堆栈，也不要
+打印已经积累的完整对象。第二次 Ctrl-C 也不应绕过应用状态随意报告成功；实战要定义并
+测试稳定行为。
 
 ### 7. renderer 只认识应用事件
 

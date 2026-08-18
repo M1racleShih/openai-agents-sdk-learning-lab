@@ -23,7 +23,7 @@ description: 在一次 Runner run 中维持对话、流式输出自然语言，�
 - 解释一次应用 turn 与一次 `Runner.run_streamed()` 的对应关系；
 - 比较 `to_input_list()`、SDK `Session` 与 `previous_response_id`；
 - 通过可注入 Session factory 为同一应用 session 保持两轮连续对话；
-- 区分 raw response 事件、high-level run-item 事件和最终 `RunResultStreaming`；
+- 区分原始响应事件、已成形条目事件和最终 `RunResultStreaming`；
 - 持续消费 `stream_events()` 直到结束，再形成最终 `RunOutcome`；
 - 正确使用 `cancel()` 与 `cancel(mode="after_turn")`；
 - 用 fake stream 确定性测试 delta、工具事件、失败和取消；
@@ -40,7 +40,7 @@ description: 在一次 Runner run 中维持对话、流式输出自然语言，�
 ### 1. 一个应用 turn 对应一次 streamed Runner run
 
 应用 turn 从收到 `Submit(session_id, text)` 开始，到 `stream_events()` 结束并产生一个最终
-`RunOutcome` 为止。一个 turn 可以包含多个 SDK model turn 和多个只读工具调用；这些都属于
+`RunOutcome` 为止。一个应用 turn 可以包含多个 SDK turn 和多个只读工具调用；这些都属于
 同一个 Agent loop，而不是多个应用运行。
 
 ```text
@@ -52,7 +52,8 @@ application turn
 ```
 
 最后一个可见 token 只说明目前没有更多文本，不说明工具、Session 写入、trace 或 runner
-状态已经 settle。唯一可靠的结束点是 `async for` 正常结束，或它以异常结束并被应用分类。
+状态已经 settle（全部结束、结果可读）。唯一可靠的结束点是 `async for` 正常结束，或它以
+异常结束并被应用分类。
 
 ### 2. 三种连续性策略只选择一种
 
@@ -154,9 +155,9 @@ capstone 选择最小应用侧组合，不把 Agent final output 设为结构化
 ```
 
 `RunOutcome.answer` 使用 settle 后的完整自然语言 final output；`status`、`evidence`、
-`provenance` 和 `errors` 来自应用自己拥有的只读工具结果、context 累积器与 M03 映射。这样
-没有独立于这次 Agent loop 的额外模型调用，也没有第二个 Agent。模型不能仅靠一句
-“已完成”把缺资料或异常改写成 `completed`。
+`provenance` 和 `errors` 来自应用自己拥有的数据：流式过程中收集到本地 context 里的
+只读工具结果，以及 M03 的异常映射。这样没有独立于这次 Agent loop 的额外模型调用，
+也没有第二个 Agent。模型不能仅靠一句“已完成”把缺资料或异常改写成 `completed`。
 
 必须测试以下失败路径：没有最终文本、请求来源未覆盖、工具失败、模型失败、超时、取消，
 以及 stream 结束后结果仍不满足一致性规则。任何一条都不能回退成 `completed`。如果你的

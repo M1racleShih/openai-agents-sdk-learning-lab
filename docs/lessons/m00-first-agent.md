@@ -29,12 +29,12 @@ description: 理解 Agent、Runner.run、RunResult 与 trace，并完成第一�
 - 在 Trace viewer 中找到这次运行和其中的模型调用；
 - 说明 tracing 的用途，以及它为什么不等于对话记忆；
 - 说清 SDK 管理了什么，以及应用代码仍然必须管理什么。
-- 说明最终应用只有一个 Agents SDK Agent runtime。
+- 说明最终应用只有一个 Agents SDK Agent runtime，即只运行一个由 SDK 管理的 Agent（没有 handoff 或多 Agent）；
 
 !!! abstract "本章边界"
 
-    本章只学习最小运行路径，不使用工具、Session、streaming 或结构化输出。课程最终仍然
-    只有这一个 SDK Agent runtime；handoff 和多 Agent 不在学习范围内。
+    本章只学习最小运行路径，不使用工具、Session、streaming 或结构化输出。课程的最终
+    应用只有这一个由 SDK 运行的 Agent；handoff 和多 Agent 不在学习范围内。
 
 ## 核心内容
 
@@ -85,17 +85,18 @@ agent = Agent(
 )
 ```
 
-此时还没有本次问题，所以也没有模型请求。后面可以让同一个 `Agent` 回答多个问题，
-每个问题分别开始一次新的运行。
+此时还没有本次要回答的问题，所以也不会发出模型请求。后面可以让同一个 `Agent`
+回答多个问题，每个问题分别开始一次新的运行。
 
-复用同一个 `Agent` 只会复用这些配置，不会自动把上一次 `Runner.run` 的对话历史带入
-下一次运行。需要多轮上下文时，应用必须显式选择一种状态续接方式。M00 暂不展开这些
-方式，只需先分清：`Agent` 是配置，对话历史是另一份状态。
+复用同一个 `Agent` 复用的只是这些配置。上一次 `Runner.run` 的对话历史不会自动带进
+下一次运行。需要多轮上下文时，应用必须自己决定怎样把对话继续下去。M00 暂不展开
+具体方式，先分清一点：`Agent` 是配置，对话历史是另一份状态。
 
 ### 3. `Runner.run` 执行一次完整运行
 
-`Runner.run(agent, input)` 接收起始 Agent 和本次输入。它会执行 agent loop，直到得到
-最终结果、运行被中断，或者发生异常。
+`Runner.run(agent, input)` 接收起始 Agent 和本次输入。它会反复执行 agent loop——
+调用模型、检查模型输出、执行模型请求的工具、把结果交回模型——直到得到最终结果、
+运行被中断，或者发生异常。
 
 ```python
 result = await Runner.run(agent, "What problem does a Python context manager solve?")
@@ -123,7 +124,7 @@ print(result.final_output)
   → 返回 RunResult
 ```
 
-M00 没有设置 `output_type`，所以 `result.final_output` 通常是字符串。后续章节加入
+M00 没有设置 `output_type`，所以 `result.final_output` 通常是字符串。M01 加入
 结构化输出后，它也可以是经过校验的对象。
 
 ### 4. 应用仍然控制边界
@@ -145,9 +146,9 @@ SDK 只会使用应用交给 Agent 的能力。应用必须决定：
 ### 5. trace 记录一次运行经过了哪些步骤
 
 Tracing 的首要用途不是保存另一份对话，而是让开发者看清最终结果经过了哪些步骤。
-回答错误时，可以用 trace 判断问题出在模型、工具、guardrail，还是普通应用
-代码。有代表性的 trace 还可以成为后续 eval 的案例。Trace 提供检查依据，但不会让
-下一次运行记住对话，也不会自动判断答案是否正确。
+回答错误时，可以用 trace 判断问题出在哪一步：模型、工具、guardrail（检查模型输入
+或输出的规则），还是普通应用代码。有代表性的 trace 还可以成为后续评测的案例。
+Trace 提供检查依据，但不会让下一次运行记住对话，也不会自动判断答案是否正确。
 
 一个 trace 记录一次工作流从开始到结束发生的事情。一个 span 记录其中一个有开始和
 结束时间的步骤，例如一次模型调用或一次函数工具调用。
@@ -159,10 +160,10 @@ Tracing 的首要用途不是保存另一份对话，而是让开发者看清最
 └── 模型调用：span
 ```
 
-Agents SDK 默认启用 tracing，并通过可替换的 trace processor 导出记录。本项目在应用启动
-时用本地 MLflow processor 替换默认的 OpenAI exporter，因此不会连接
-`api.openai.com`。`v0.20.0` 会记录整次运行、Runner 调用、模型轮次、Agent 执行和模型
-生成；使用工具或 guardrail 时，还会记录相应步骤。
+Agents SDK 默认开启 tracing。记录由 trace processor 导出——processor 决定记录发往
+哪里，而且可以替换。本项目在应用启动时用本地 MLflow processor 替换默认的 OpenAI
+exporter，因此不会连接 `api.openai.com`。`v0.20.0` 会记录整次运行、Runner 调用、
+模型轮次、Agent 执行和模型生成；使用工具或 guardrail 时，还会记录相应步骤。
 
 M00 没有这些额外能力。完成真实运行后，只需确认：
 
@@ -248,7 +249,7 @@ if __name__ == "__main__":
 7. 错。工具调用可能让同一次运行包含多次模型调用。
 8. 错。复用 `Agent` 只会复用配置；多轮对话必须显式续接状态。
 9. 不会。Trace 用来检查一次运行实际经过了哪些步骤，帮助定位错误、分析耗时，并为
-   后续 eval 提供有代表性的案例。
+   后续评测提供有代表性的案例。
 
 </details>
 
@@ -262,8 +263,8 @@ if __name__ == "__main__":
 4. 打印 `result.final_output`；
 5. 不添加工具、session、streaming、结构化输出或异常包装层。
 
-如果模型配置缺失，现有 `load_learning_model()` 应直接给出错误。不要在这个练习中
-复制供应商判断或重新实现配置加载。
+如果模型配置缺失，现有 `load_learning_model()` 会直接报错。不要在练习里复制供应商
+判断逻辑，也不要重新实现配置加载。
 
 先运行仓库检查：
 

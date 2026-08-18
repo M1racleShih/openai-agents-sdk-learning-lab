@@ -7,7 +7,7 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 
 # 结构化结果与上下文
 
-<p class="lesson-deck">让下游程序直接接收经过校验的对象，同时把本地依赖留在模型之外。</p>
+<p class="lesson-deck">让下游程序拿到校验过的对象，而不是一段要猜的文本；本地依赖留在模型之外。</p>
 
 <div class="lesson-meta" aria-label="课程信息">
   <span>SDK v0.20.0</span>
@@ -21,12 +21,12 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 学完本章后，你应该能够：
 
 - 用 Pydantic 分别定义应用收到的 `TaskRequest` 和用例返回的 `WorkerResult`；
-- 说明 `output_type` 怎样让 `final_output` 成为经过校验的对象；
+- 说明设置 `output_type` 后，`final_output` 为什么是校验过的对象而不是文本；
 - 把 `WorkerResult` 直接转换为 JSON，而不解析模型生成的自由文本；
-- 区分模型可见输入和本地 `RunContextWrapper`；
+- 分清两样东西：模型能看到的输入，和只留在本地的 `RunContextWrapper`；
 - 把 logger、允许的资料根目录和客户端等依赖留在本地代码中；
 - 说明本地 context 在什么情况下仍可能被应用代码暴露给模型；
-- 区分最终结构化运行结果与用户可见流式回答这两个接口问题；
+- 说明"机器读的最终结果"和"人看的流式回答"是两个不同的问题；
 - 完成一次返回 `WorkerResult` 的单 Agent 运行。
 
 !!! note "开始之前"
@@ -36,18 +36,16 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
 
 !!! abstract "本章边界"
 
-    本章只处理正常运行中的输入、输出和 context 边界。它不添加工具，也不定义超时、
-    不完整或失败的运行语义；这些内容分别留到 M02 和 M03。本章只指出结构化结果与流式
-    回答的张力，不提前给出完整双通道方案；M05 会用锁定版本和目标模型做兼容性 spike。
+    本章只处理正常运行中的输入、输出和 context 边界。不添加工具；超时、不完整或
+    失败的运行语义留到 M02 和 M03。结构化结果与流式回答之间的矛盾，本章只指出
+    来，不给完整方案；M05 会用锁定版本和目标模型做兼容性 spike。
 
 ## 核心内容
 
-### 1. 请求模型和结果模型解决两个不同问题
+### 1. 一个管进，一个管出：`TaskRequest` 和 `WorkerResult`
 
-本教材把 `TaskRequest` 和 `WorkerResult` 分别称为请求模型和结果模型。它们都是由普通
-程序按照字段和类型检查的 Pydantic 数据模型。应用先用 `TaskRequest` 检查调用方传入的
-数据，再把允许模型看到的内容交给 `Runner.run`。Agent 完成运行后，SDK 按
-`WorkerResult` 检查模型输出，并把经过校验的对象放入 `final_output`。
+本教材把 `TaskRequest` 称为请求模型，把 `WorkerResult` 称为结果模型。它们都是
+Pydantic 数据模型，由普通程序按字段和类型检查。一次运行的完整流程是：
 
 ```text
 调用方 JSON
@@ -58,10 +56,13 @@ description: 用 Pydantic 定义任务与结果，并分清模型输入和本地
   → 调用方读取字段
 ```
 
-应用用 `model_validate` 执行“检查输入”这一步。缺少必填字段，或值无法校验为声明的
-类型时，它会立刻抛出 `ValidationError`——这个异常就是“应用检查”的含义。检查通过后，
-应用把允许模型看到的
-字段拼成模型输入：
+拆开说：应用先用 `TaskRequest` 检查调用方传入的数据，检查通过后，把允许模型看到
+的内容交给 `Runner.run`；运行结束后，SDK 按 `WorkerResult` 检查模型输出，把校验
+过的对象放进 `final_output`。
+
+"检查输入"这一步由 `model_validate` 完成：调用方的数据缺必填字段，或某个值转不成
+声明的类型，它会立刻抛出 `ValidationError`——这就是"应用检查"的含义。检查通过
+后，应用把允许模型看到的字段拼成模型输入：
 
 ```python
 request = TaskRequest.model_validate(
@@ -80,41 +81,41 @@ model_input = (
 
 M01 只展示检查成功的路径；校验失败和错误报告留给 M03。
 
-两个模型不能互相替代：
+两个模型各管一头，不能互相替代：
 
 | 对象 | 谁创建或检查 | 用途 |
 | --- | --- | --- |
 | `TaskRequest` | 应用在调用 Agent 前检查 | 拒绝缺字段或类型错误的任务请求 |
 | `WorkerResult` | Agent 按 schema 生成，SDK 解析并检查 | 让下游程序稳定读取答案、证据和错误 |
 
-这里要区分几个术语：`TaskRequest` 和 `WorkerResult` 是数据模型；把 `WorkerResult` 传给
-`output_type` 后，SDK 据此生成输出 schema（描述输出形状的 JSON 文档），并要求 Agent
-返回结构化输出；M03 再用状态
-一致性规则约束状态、答案、证据和错误之间的关系。
+再区分三个词。`TaskRequest` 和 `WorkerResult` 本身是数据模型；把 `WorkerResult`
+传给 `output_type` 后，SDK 会为它生成一份输出 schema——描述"输出长什么样"的 JSON
+文档——并据此要求 Agent 返回结构化输出；至于状态、答案、证据和错误之间要满足
+什么关系，M03 用一致性规则来约束。
 
-`Runner.run` 的 `input` 接收字符串或模型输入项，不会因为你定义了 `TaskRequest` 就自动
-把这个对象变成模型输入。应用必须明确选择字段并构造输入。这个动作同时确定了模型能
-看到什么。
+还有一点容易误解：`Runner.run` 的 `input` 只接收字符串或模型输入项。定义了
+`TaskRequest` 并不会让它自动变成模型输入——应用必须自己挑选字段、自己拼输入。
+挑了哪些字段，模型就看到哪些内容。
 
-### 2. 用 Pydantic 写清字段，而不是约定一段文本格式
+### 2. 把字段写清楚，而不是约定一段文本格式
 
-`BaseModel` 是 Pydantic 库提供的基类。它把普通 Python 类变成“声明字段类型 → 自动校验
-→ 生成 JSON schema”的数据模型。Pydantic 是独立库，不属于 Agents SDK；本章用
-它检查应用输入，并让 Agents SDK 描述 Agent 的结构化输出。
+`BaseModel` 是 Pydantic 提供的基类：继承它、声明字段类型，就自动得到校验和 JSON
+schema 生成。Pydantic 是独立库，不属于 Agents SDK；本章用它做两件事——检查应用
+输入，描述 Agent 的结构化输出。
 
-最终应用用例会逐步形成四个模型：
+最终的应用用例会逐步形成四个模型：
 
 - `TaskRequest`：任务标识、问题和允许查询的资料标识；
 - `Evidence`：一条整理后的证据及其来源标识；
 - `WorkerError`：机器可判断的错误代码和给人的说明；
 - `WorkerResult`：任务标识、答案、证据列表和错误列表。
 
-M01 只处理正常路径，所以错误列表可以为空。M03 再加入 `completed`、`incomplete` 和
-`failed`，并规定状态与错误之间的关系。
+M01 只处理正常路径，所以错误列表可以为空。M03 再加入 `completed`、`incomplete`
+和 `failed`，并规定状态与错误之间的关系。
 
-Pydantic 字段定义既给 Python 程序使用，也会成为 Agent 的输出 schema。字段名应该表达
-稳定含义，不要把展示文字塞进一个大字符串。例如，下游程序可以直接遍历
-`result.evidence`，不需要从“Sources: ...”中猜出来源。
+字段定义有双重身份：Python 程序直接使用它，它同时也是 Agent 的输出 schema。所以
+字段名要表达稳定的含义，不要把展示文字塞进一个大字符串。下游程序可以直接遍历
+`result.evidence`，不需要从"Sources: ..."里猜来源。
 
 !!! tip "先让字段全部必填"
 
@@ -123,12 +124,13 @@ Pydantic 字段定义既给 Python 程序使用，也会成为 Agent 的输出 s
 
 ### 3. `output_type` 改变最终结果的类型
 
-下面的 `SummaryResult` 是简化讲解模型，不是实战题的 `WorkerResult`。它与
-`WorkerResult` 的用法完全相同——把你的模型替换进去即可。
+下面的 `SummaryResult` 是讲解用的简化模型，不是实战题的 `WorkerResult`；用法完全
+相同——把你的模型替换进去即可。
 
 Agent 默认返回文本。把 Pydantic 模型传给 `output_type` 后，SDK 会为它生成 JSON
-schema，并要求模型使用结构化输出。`v0.20.0` 默认使用严格 schema——严格模式拒绝 schema 之外
-的多余字段和宽松类型转换，让输出更可预测。SDK 随后校验并解析模型返回的 JSON。
+schema，并要求模型按结构化输出作答。`v0.20.0` 默认使用严格 schema：拒绝 schema
+之外的多余字段和宽松类型转换，让输出更可预测。模型返回 JSON 后，SDK 校验并解析
+它。
 
 ```python
 from pydantic import BaseModel
@@ -148,10 +150,10 @@ agent = Agent(
 )
 ```
 
-正常结束时，`result.final_output` 是 `SummaryResult`，不是等待你再次解析的 JSON 字符串。
-`RunResult.final_output` 的静态类型是 `Any`：单 Agent 运行中它实际就是 `SummaryResult`，
-但 SDK 的通用结果类型不能静态保证每一种运行配置。已知本章只有一个 Agent 时，可以显式
-检查并取得类型：
+正常结束时，`result.final_output` 就是 `SummaryResult` 对象，不是一段等你再解析的
+JSON 字符串。不过 `RunResult.final_output` 的静态类型是 `Any`——SDK 的通用结果
+类型没法对每一种运行配置做静态保证。本章只有一个 Agent、预期类型明确，可以显式
+检查后再取：
 
 ```python
 output = result.final_output_as(SummaryResult, raise_if_incorrect_type=True)
@@ -159,12 +161,13 @@ print(output.model_dump(mode="json"))
 print(output.model_dump_json())
 ```
 
-`model_dump(mode="json")` 返回只含 JSON 可表示值的 Python 字典；`model_dump_json()`
-直接返回 JSON 字符串。两种方式都不需要按标点或标题拆分自由文本。
+`model_dump(mode="json")` 返回只含 JSON 可表示值的 Python 字典；
+`model_dump_json()` 直接返回 JSON 字符串。两种方式都不需要按标点或标题拆分自由
+文本。
 
-结构化输出只检查形状和字段类型。它不会自动证明答案正确，也不会确认某条证据真的
-支持结论。模型或供应商还必须支持所需的结构化输出；不支持时应让运行失败，而不是
-悄悄退回自由文本。M03 会统一处理这些异常路径。
+最后记住结构化输出的边界：它只检查形状和字段类型，不证明答案正确，也不确认某条
+证据真的支持结论。它还依赖模型和供应商支持结构化输出；不支持时，正确做法是让
+运行失败，而不是悄悄退回自由文本。这些异常路径 M03 统一处理。
 
 !!! tip "OpenAI-compatible 端点与结构化输出"
 
@@ -172,25 +175,27 @@ print(output.model_dump_json())
     结构化输出。结构化输出不被支持时，本章运行会失败——这是预期行为，
     不要退回自由文本。
 
-### 4. 结构化最终结果与流式回答是两个接口问题
+### 4. 机器要 JSON，人要流式回答——两个问题别混在一起
 
-应用最终需要机器可读的 `WorkerResult`，用户却希望在运行过程中看到自然语言逐步出现。
-这两个需求的时间点和数据形状不同：
+应用最终需要机器可读的 `WorkerResult`；用户却希望在运行过程中看到自然语言一点点
+出现。流式回答以 delta 为单位送达——每次新增的一小段文本。两个需求的时间点和
+数据形状都不一样：
 
 | 接口 | 消费者 | 何时可用 | 需要的形状 |
 | --- | --- | --- | --- |
 | 结构化运行结果 | 应用代码 | run 完全结束并通过校验后 | 稳定字段、状态、证据和错误 |
 | 流式用户回答 | 终端或其他 UI | run 仍在进行时 | 可以直接阅读的自然语言 delta |
 
-设置 `output_type` 后，模型最终要产生结构化 JSON。不能由此假设 raw text delta 仍然是适合
-展示的自然语言；它可能是序列化 JSON 的片段。也不能在 UI 中边收边猜 partial JSON，因为
-字段顺序、转义和分块都不是稳定协议。
+设置 `output_type` 后，模型最终产生的是结构化 JSON。由此不能假设流式收到的 raw
+text delta 仍然是适合展示的自然语言——它可能是序列化 JSON 的片段。也不能在 UI
+里边收边猜 partial JSON：字段顺序、转义和分块都不是稳定协议。
 
-M01 只要求理解这项冲突。M05 会在 `openai-agents==0.20.0` 和显式目标模型上记录实际事件
-形状，再选择一个只有一个 Agent、一次 Runner run、没有 Agent loop 外额外模型调用的最小双通道
-方案。在 spike 完成前，不实现 partial JSON parser，也不把结构化 delta 直接显示给用户。
+M01 只要求理解这个矛盾，不解决它。M05 会在 `openai-agents==0.20.0` 和显式目标
+模型上记录实际的事件形状，再选一个最小双通道方案——只有一个 Agent、一次 Runner
+run、没有 Agent loop 之外的额外模型调用。spike 完成前，不实现 partial JSON
+parser，也不把结构化 delta 直接显示给用户。
 
-### 5. 模型上下文和本地 context 不是同一份数据
+### 5. 两种"上下文"：模型看到的，和只留在本地的
 
 ```mermaid
 flowchart TB
@@ -210,7 +215,7 @@ flowchart TB
     three -- "可能主动写入（默认不会）" --> one
 ```
 
-“上下文”常指两类完全不同的数据：
+"上下文"这个词常被混着用，实际指两类完全不同的数据：
 
 | 数据放在哪里 | 模型是否自动看到 | 典型内容 |
 | --- | --- | --- |
@@ -218,34 +223,33 @@ flowchart TB
 | `Runner.run(..., context=...)` 传入的本地对象 | 否 | logger、允许的资料根目录、客户端、运行依赖 |
 
 应用创建本地对象并传给 `Runner.run`。SDK 把它包进
-`RunContextWrapper[YourContext]`，供动态 instructions、工具、hook 和回调中的 Python
-代码读取。传给 Runner 的是原始对象，不是手工创建的 wrapper：
+`RunContextWrapper[YourContext]`，供动态 instructions、工具、hook 和回调中的
+Python 代码读取。注意传给 Runner 的是原始对象，不是手工创建的 wrapper：
 
 ```python
 result = await Runner.run(agent, model_input, context=local_context)
 ```
 
-同一次运行中的 Agent、工具和 hook 应使用同一种 context 类型。写成
-`Agent[WorkerContext]` 和 `RunContextWrapper[WorkerContext]` 后，类型检查器可以发现接错
-context 的代码。方括号只是类型标注，运行时与 `Agent(...)` 没有区别；这样写能让
-pyright 检查整次运行使用的 context 类型是否一致。
+同一次运行里，Agent、工具和 hook 应该使用同一种 context 类型。写成
+`Agent[WorkerContext]` 和 `RunContextWrapper[WorkerContext]`，类型检查器就能发现
+接错 context 的代码。方括号只是类型标注，运行时与 `Agent(...)` 没有区别；写出来
+是为了让 pyright 检查整次运行使用的 context 类型是否一致。
 
 !!! warning "本地不等于永远不会泄露"
 
-    SDK 不会自动把 `wrapper.context` 发给模型。但应用代码仍可能主动暴露它。例如，
-    动态 instructions 如果返回资料路径，或者工具把凭据放进返回值，这些内容就会进入
-    模型上下文。只返回完成任务所需的数据，不要返回 logger、客户端或凭据。
+    SDK 不会自动把 `wrapper.context` 发给模型。但应用代码仍可能主动暴露它：动态
+    instructions 返回了资料路径，或工具把凭据放进返回值，这些内容就会进入模型
+    上下文。只返回完成任务所需的数据，不要返回 logger、客户端或凭据。
 
-### 6. 最小示例：使用结构化输出，但把依赖留在本地
+### 6. 最小示例：输出走 schema，依赖留本地
 
-下面的示例把两件事放在一起：`SummaryResult` 进入模型的输出 schema，`AppContext` 则只
-供本地 Python 代码使用。动态 instructions 可以读取 wrapper，但它返回的字符串没有
-包含 logger 或资料路径。
+下面的示例把本章的两件事合在一起：`SummaryResult` 进入模型的输出 schema，
+`AppContext` 只给本地 Python 代码用。动态 instructions 可以读取 wrapper，但它返回
+的字符串里没有 logger 或资料路径。
 
-注意 `AppContext` 用的是普通 `dataclass`，不是 Pydantic 的 `BaseModel`：context 只给
-本地 Python 代码使用，不需要为 SDK 生成 schema。本章选择用 Pydantic 校验
-`TaskRequest` 并定义 `SummaryResult`；这是课程的建模选择，不是 SDK 对所有输入和
-输出对象的硬性要求。
+再注意 `AppContext` 用的是普通 `dataclass`，不是 Pydantic 的 `BaseModel`：context
+只给本地代码使用，不需要为 SDK 生成 schema。用 Pydantic 校验 `TaskRequest`、定义
+`SummaryResult`，是本课程的建模选择，不是 SDK 对所有输入和输出对象的硬性要求。
 
 ```python
 import asyncio
@@ -305,15 +309,18 @@ if __name__ == "__main__":
 1. `AppContext(...)` 创建只供本地代码使用的依赖对象，此时不调用模型；
 2. `Agent[AppContext](...)` 只创建配置：instructions 是函数、输出 schema 是
    `SummaryResult`、模型来自 `load_learning_model()`，也不调用模型；
-3. `Runner.run(agent, model_input, context=local_context)` 开始运行，此时才会调用模型；
+3. `Runner.run(agent, model_input, context=local_context)` 开始运行，此时才会调用
+   模型；
 4. 运行结束，`final_output_as(SummaryResult, ...)` 取回校验过的对象；
 5. `model_dump_json()` 把它序列化成一行 JSON 打印出来。
 
-这段代码中，模型能看到 instructions、`model_input` 和输出 schema。模型看不到
-`logging.Logger` 对象或 `allowed_source_root`。logger 会在本地记录 Agent 名称；资料根
-目录暂时只是注入的依赖（`fixtures` 目录目前不需要存在），M02 的只读工具会使用它。
+运行中，模型能看到三样东西：instructions、`model_input` 和输出 schema。模型看不
+到 `logging.Logger` 对象，也看不到 `allowed_source_root`。logger 只在本地记录
+Agent 名称；资料根目录此时只是注入的依赖（`fixtures` 目录目前不需要存在），M02
+的只读工具会用到它。
 
-示例中的 `SummaryResult` 只是讲解用模型，不是下面实战题的 `WorkerResult` 完整答案。
+示例里的 `SummaryResult` 只是讲解用模型，不是下面实战题 `WorkerResult` 的完整
+答案。
 
 ## 习题
 
@@ -334,21 +341,22 @@ if __name__ == "__main__":
 <details class="exercise-answers">
 <summary>参考答案</summary>
 
-1. 应用在运行 Agent 前用 `TaskRequest` 检查调用方输入；SDK 在 Agent 产生最终结果时按
-   `WorkerResult` 的 schema 校验并解析输出。
-2. `Runner.run` 接收字符串或模型输入项，不会自动把应用的 Pydantic 请求对象变成模型
-   输入。应用还需要明确选择哪些字段允许模型看到。
+1. 应用在运行 Agent 前用 `TaskRequest` 检查调用方输入；SDK 在 Agent 产生最终结果
+   时按 `WorkerResult` 的 schema 校验并解析输出。
+2. `Runner.run` 接收字符串或模型输入项，不会自动把应用的 Pydantic 请求对象变成
+   模型输入。应用还需要明确选择哪些字段允许模型看到。
 3. 它应是经过校验的 `WorkerResult` 对象。已知预期类型时，可以调用
    `final_output_as(WorkerResult, raise_if_incorrect_type=True)` 再做运行时检查。
-4. 自由文本的标题、顺序和措辞可能变化。结构化对象让下游按稳定字段和类型读取，并在
-   缺字段或类型错误时直接失败。
+4. 自由文本的标题、顺序和措辞可能变化。结构化对象让下游按稳定字段和类型读取，
+   并在缺字段或类型错误时直接失败。
 5. 前者返回 JSON 可表示的 Python 字典，后者返回 JSON 字符串。
 6. 错。本地 context 只传给本地 Python 代码。
-7. 错。动态 instructions、工具或 hook 仍可能读取 context，再把其中内容写进模型可见的
-   输入或工具结果。
-8. 看不到。代码没有把这个路径写进 instructions 或 `model_input`，也没有工具返回它。
-9. 两处泛型声明让类型检查器确认整次运行使用同一种本地 context，及早发现接错依赖的
-   代码。
+7. 错。动态 instructions、工具或 hook 仍可能读取 context，再把其中内容写进模型
+   可见的输入或工具结果。
+8. 看不到。代码没有把这个路径写进 instructions 或 `model_input`，也没有工具返回
+   它。
+9. 两处泛型声明让类型检查器确认整次运行使用同一种本地 context，及早发现接错
+   依赖的代码。
 
 </details>
 
@@ -360,8 +368,8 @@ if __name__ == "__main__":
    `requested_source_ids: list[str]`；
 2. `Evidence`：包含 `source_id: str` 和 `summary: str`；
 3. `WorkerError`：包含 `code: str` 和 `message: str`；
-4. `WorkerResult`：包含 `task_id: str`、`answer: str`、`evidence: list[Evidence]` 和
-   `errors: list[WorkerError]`；
+4. `WorkerResult`：包含 `task_id: str`、`answer: str`、`evidence: list[Evidence]`
+   和 `errors: list[WorkerError]`；
 5. 四个模型的字段都保持必填；没有证据或错误时，调用方仍要明确提供空列表。
 
 然后在 `src/evidence_worker/structured_agent.py` 中完成一次单 Agent 运行：
@@ -369,9 +377,9 @@ if __name__ == "__main__":
 1. 定义一个本地 `WorkerContext`，其中保存 logger 和允许的资料根目录；
 2. 用 `Agent[WorkerContext]` 创建 Agent，并设置 `output_type=WorkerResult`；
 3. 用 `load_learning_model()` 显式提供模型；
-4. 先由 `TaskRequest` 检查一份公开练习请求，再只把任务标识、问题和资料标识放进模型
-   输入；
-5. 本章还没有读取工具，所以要求 Agent 不编造证据，并在正常回答时返回空的
+4. 先由 `TaskRequest` 检查一份公开练习请求，再只把任务标识、问题和资料标识放进
+   模型输入；
+5. 本章还没有读取工具，所以要求 Agent 不编造证据，正常回答时返回空的
    `evidence` 和 `errors`；
 6. 把原始 `WorkerContext` 传给 `Runner.run(..., context=...)`；
 7. 检查最终类型，再用 `model_dump_json()` 打印一个 JSON 对象。
@@ -397,13 +405,13 @@ uv run python -m evidence_worker.structured_agent
 
 - 一份有效的 `TaskRequest` 能启动运行；
 - 正常运行返回可直接序列化的 `WorkerResult`，标准输出是一个 JSON 对象；
-- 把“模型看到了哪些字段”和“哪些对象只留在本地”两张清单写进 LEARNING_LOG.md，
+- 把"模型看到了哪些字段"和"哪些对象只留在本地"两张清单写进 LEARNING_LOG.md，
   不看教材也能解释它们的依据；
 - prompt 和输出中没有 logger、资料根目录、客户端、环境变量值或凭据；
 - 仓库检查全部通过。
 
-本章没有给出实战题的完整实现。上面的 `SummaryResult` 示例展示了
-`output_type`、context 和序列化的连接方式；请把相同关系用于自己的四个数据模型。
+本章没有给出实战题的完整实现。上面的 `SummaryResult` 示例展示了 `output_type`、
+context 和序列化的连接方式；请把相同关系用于自己的四个数据模型。
 
 ## 术语表
 
@@ -429,6 +437,7 @@ uv run python -m evidence_worker.structured_agent
 - [`v0.20.0` Agent output schema source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/agent_output.py)
 - [`v0.20.0` Run context source](https://github.com/openai/openai-agents-python/blob/v0.20.0/src/agents/run_context.py)
 
-示例改动：把官方 output type 和 dynamic instructions 示例合并为一个单 Agent 摘要任务；
-改用项目现有的显式模型加载器；加入 logger 和允许的资料根目录来展示本地依赖边界；
-省略工具、handoff、session、streaming、非严格 schema、自定义 schema 和异常处理。
+示例改动：把官方 output type 和 dynamic instructions 示例合并为一个单 Agent 摘要
+任务；改用项目现有的显式模型加载器；加入 logger 和允许的资料根目录来展示本地依赖
+边界；省略工具、handoff、session、streaming、非严格 schema、自定义 schema 和异常
+处理。

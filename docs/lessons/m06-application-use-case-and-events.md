@@ -21,7 +21,7 @@ description: 用 Submit、Cancel 和有限事件集合隔离 Agents SDK 与终�
 学完本章后，你应该能够：
 
 - 用 `Submit` 与 `Cancel` 表示终端允许发出的全部应用命令；
-- 用有限的 discriminated union 建模七种应用事件；
+- 用有限的 discriminated union（靠 `kind` 字段区分的联合类型）建模七种应用事件；
 - 让异步用例发出事件并返回最终 `RunOutcome`；
 - 把 SDK raw/high-level 事件翻译为稳定、UI 无关的应用事件；
 - 保证终端不导入或判断任何 SDK event 类型；
@@ -56,12 +56,13 @@ class Cancel:
 
 `Submit` 的 session ID 是应用关联键；用例为它创建唯一 application run ID、SDK Session 和
 trace ID。`Cancel` 指向一个明确的活动 run，避免旧的 Ctrl-C 误伤下一轮。命令不接受
-`Agent`、`RunConfig`、SDK Session 或 stream event；这些依赖由应用组合根注入。
+`Agent`、`RunConfig`、SDK Session 或 stream event；这些依赖由应用组合根（创建并连接
+所有对象的那段启动代码）注入。
 
 ### 2. 七种事件构成封闭 union
 
 最简单的实现是 frozen dataclass。每种事件都带字面量 `kind`、session ID 与 application
-run ID；payload 只含 presentation 需要且允许公开的字段：
+run ID；payload 只含 presentation adapter（M07 的展示适配层）需要且允许公开的字段：
 
 ```python
 from dataclasses import dataclass
@@ -154,9 +155,9 @@ async def execute_submit(command: Submit, emit: EventSink) -> RunOutcome:
     ...
 ```
 
-这不是通用 event bus。一个终端 turn 传入一个 sink，测试传入收集到 list 的 fake sink。
-同一个用例以后也可以被非终端 presentation adapter 调用，但用例不依赖 Rich、
-prompt-toolkit、stdout 或 TTY。
+这不是通用 event bus。每次终端 turn 传入一个 sink，测试传入把事件收集到 list 的
+fake sink。同一个用例以后也可以被非终端的 presentation adapter 调用，但用例不依赖
+Rich、prompt-toolkit、stdout 或 TTY。
 
 ### 4. 翻译规则固定在应用层
 
@@ -171,7 +172,8 @@ prompt-toolkit、stdout 或 TTY。
 | 失败、超时或取消 | `Error` | 固定 code + 安全消息；返回值仍是对应 `RunOutcome` |
 
 终端模块不得导入 `RawResponsesStreamEvent`、`RunItemStreamEvent` 或
-`ResponseTextDeltaEvent`。SDK 升级影响翻译器与兼容性测试，不应该迫使 renderer 跟着改变。
+`ResponseTextDeltaEvent`。SDK 升级只影响翻译器与兼容性测试，不应该迫使 renderer
+（M07 的终端渲染层）跟着改变。
 
 ### 5. 事件顺序也是应用协议
 
@@ -187,7 +189,7 @@ return the same outcome
 ```
 
 工具成功时 `ToolStarted` 必须先于对应 `ToolFinished`；从这次工具结果得到的新 evidence 在
-`ToolFinished` 之后发出。失败、超时和取消路径发出相应 terminal `RunStateChanged`，再发
+`ToolFinished` 之后发出。失败、超时和取消路径先发出相应的终态 `RunStateChanged`，再发
 一个 `Error`，而不是 `Final`。每条路径最后都返回同一分类的 `RunOutcome`。
 
 `MessageDelta` 可以在工具事件前后交错，不要写死模型一定先说话还是先用工具。测试应该
@@ -221,8 +223,8 @@ Cancel → look up exact run → emit cancelling → result.cancel() → await t
 | 结果不完整 | `incomplete` + Final，缺失来源 code 可直接读取 |
 | 同一 session 两轮 | Session factory 收到同一 ID，第二轮历史连续 |
 
-再增加“不同 run ID 的 Cancel 不影响当前运行”和“异常时 registry 仍清理”两个竞争边界测试。
-默认测试使用 fake，不实例化真实模型 client。
+再增加两个边界测试：不同 run ID 的 Cancel 不影响当前运行；发生异常时 registry 仍被
+清理。默认测试使用 fake，不实例化真实模型 client。
 
 ## 习题
 

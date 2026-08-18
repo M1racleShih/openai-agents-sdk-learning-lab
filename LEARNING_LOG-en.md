@@ -11,7 +11,7 @@ minute.
 | --- | --- | --- | --- |
 | M00: First observable Agent | in_progress | — | — |
 | M01: Structured results and context | passed | 2026-08-17 | Repo checks pass; Xiaomi MiMo run prints a `WorkerResult` JSON; MiniMax failure recorded as expected |
-| M02: Read-only tools and source boundaries | pending | — | — |
+| M02: Read-only tools and source boundaries | in_progress | — | — |
 | M03: Bounded runs and truthful failures | pending | — | — |
 | M04: Traces, minimal metadata, and deterministic tests | pending | — | — |
 | M05: Sessions, streaming, and cancellation | pending | — | — |

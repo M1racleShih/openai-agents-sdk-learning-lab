@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | M00：首个可观察 Agent | in_progress | — | — |
 | M01：结构化结果与上下文 | passed | 2026-08-17 | 仓库检查通过；小米 MiMo 端点结构化运行输出 `WorkerResult` JSON；MiniMax 失败已按预期记录 |
-| M02：只读工具与来源边界 | pending | — | — |
+| M02：只读工具与来源边界 | in_progress | — | — |
 | M03：有界运行与失败语义 | pending | — | — |
 | M04：Trace、最小元数据与确定性测试 | pending | — | — |
 | M05：Sessions、streaming 与取消 | pending | — | — |

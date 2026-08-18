@@ -70,8 +70,9 @@ description: 用稳定的 trace 标识、最小本地记录和可替换的 runne
 
 ### 2. Session、run 和 trace 标识不是同一个状态空间
 
-应用先拥有两个标识，SDK tracing 再拥有一个标识；M05 还会给会话存储一个 SDK Session
-标识。不要把它们折叠为“session ID”：
+这里一共有四个标识，分属三方：应用自己生成两个（session 和 run），SDK tracing
+生成一个（trace），M05 的 SDK Session 还有一个（对话历史存储键）。不要把它们
+折叠成“session ID”：
 
 | 标识 | 生命周期 | 回答的问题 |
 | --- | --- | --- |
@@ -79,6 +80,8 @@ description: 用稳定的 trace 标识、最小本地记录和可替换的 runne
 | application run ID | 每个 `Submit` 唯一 | 哪条命令、事件序列和 `RunOutcome` 属于同一次运行？ |
 | SDK Session ID | M05 的对话历史存储键 | SDK 从哪个历史容器读取和写入消息？ |
 | trace ID | 每次 SDK run 的 trace | 在 Trace viewer 中查看哪条模型与工具路径？ |
+
+`Submit` 和 `RunOutcome` 是 M06 应用用例中的命令与结果对象，本章只借用这两个名字。
 
 应用 session ID 可以作为 SDK Session factory 的输入，但概念上仍不同：前者是应用关联键，
 后者属于一种可替换的对话历史实现。application run ID 由应用生成；`trace_id` 必须符合 SDK
@@ -187,7 +190,7 @@ class RunRecord(BaseModel):
 ```
 
 这里的 `skill` 只是课程允许清单中的公开指令包，不是第二个 Agent，也不是 SDK runtime
-扩展点；capstone 没有使用时列表保持为空。来源和指令包只记录 ID、revision/version 与
+扩展点；capstone 没有使用时，列表保持为空。来源和指令包只记录 ID、revision/version 与
 checksum，不记录正文。`ToolPhase` 只记录已批准工具的开始、结束和结束分类，不记录参数或
 原始输出。`evidence_refs` 只保存稳定定位信息；`error_codes` 只保存 M03 的稳定分类。
 
